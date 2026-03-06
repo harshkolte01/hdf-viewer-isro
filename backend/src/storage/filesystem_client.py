@@ -28,6 +28,8 @@ class FilesystemStorageClient:
         else:
             ordered_candidates.extend([linux_root, windows_root])
 
+        # Pick the first configured candidate so the same code works on both
+        # Linux and Windows deployments without branching in route/read logic.
         for raw in ordered_candidates:
             value = str(raw or "").strip()
             if value:
@@ -83,6 +85,7 @@ class FilesystemStorageClient:
 
         parts = [part for part in normalized_key.split("/") if part]
         path = root.joinpath(*parts).resolve(strict=False)
+        # Guard against traversal (`..`) or symlink escapes outside STORAGE_ROOT.
         self._ensure_within_root(root, path)
         return path
 
@@ -135,6 +138,7 @@ class FilesystemStorageClient:
                 )
 
                 if include_folders:
+                    # UI expects folder rows even though filesystem traversal yields files.
                     folders.update(self._derive_parent_folders(relative, normalized_prefix))
 
                 if normalized_max_items is not None and len(objects) >= normalized_max_items:

@@ -1,6 +1,6 @@
 # backend/src/routes
 
-HTTP route layer for the backend.
+HTTP layer for backend APIs. This folder translates request parameters into reader/storage calls and shapes response payloads.
 
 ## Files
 
@@ -9,118 +9,61 @@ HTTP route layer for the backend.
 
 ## `files.py`
 
-Implemented endpoints:
+Blueprint: `files_bp`
+
+Endpoints:
 - `GET /files/`
-- Returns object list from filesystem storage and caches result under a request-aware key.
-- Supports query params:
-  - `prefix`
-  - `include_folders` (default `true`)
-  - `max_items` (default `20000`)
-- Response includes mixed `file` and `folder` rows.
+  - Lists filesystem objects using `FilesystemStorageClient.list_objects()`.
+  - Query params:
+    - `prefix` (default `""`)
+    - `include_folders` (default `true`)
+    - `max_items` (default `20000`, allowed `1..50000`)
+  - Uses files cache (`get_files_cache`) with key shape: `files_list:{prefix}:{include_folders}:{max_items}`.
+  - Returns both raw file rows and derived folder rows.
 
 - `POST /files/refresh`
-- Clears files cache.
-
-Imports:
-- `get_storage_client` from `src.storage.filesystem_client`
-- `get_files_cache` from `src.utils.cache`
+  - Clears files cache.
 
 ## `hdf5.py`
 
-Blueprint:
-- `hdf5_bp`
+Blueprint: `hdf5_bp`
 
-Implemented endpoints:
+Endpoints:
 - `GET /files/<key>/children`
 - `GET /files/<key>/meta`
 - `GET /files/<key>/preview`
 - `GET /files/<key>/data`
 - `GET /files/<key>/export/csv`
 
-Core responsibilities:
-- Parse and validate query params.
-- Normalize `display_dims` and `fixed_indices`.
-- Apply request-level hard limits before heavy reads.
-- Build deterministic cache keys for preview/data routes.
-- Return consistent JSON errors for validation and not-found cases.
+Key route responsibilities:
+- URL key normalization (including `%2F` decoding for nested keys).
+- Query validation and defaults.
+- Selection normalization (`display_dims`, `fixed_indices`).
+- Hard-limit checks before expensive reads.
+- Deterministic cache key generation for `/preview` and `/data`.
+- CSV streaming for large exports in bounded chunks.
 
-## `/preview` contract
+## Cache usage by endpoint
 
-Required:
-- `path`
+- `/children` and `/meta`: hdf5 cache with file `etag` in key.
+- `/preview`: hdf5 cache keyed by file + normalized request shape + cache version token.
+- `/data`: dataset cache for shape/dtype and data cache for full response payload.
+- `/export/csv`: dataset cache for metadata reuse; streamed output is not cached.
 
-Supported params:
-- `mode=auto|line|table|heatmap`
-- `detail=fast|full`
-- `include_stats`
-- `display_dims`
-- `fixed_indices`
-- `max_size`
-- `etag`
+## Error handling model
 
-Behavior:
-- Uses preview cache (`get_hdf5_cache`) keyed by file + normalized request shape.
-- Passes normalized options to `HDF5Reader.get_preview()`.
+- Validation errors: `400`
+- Not-found style errors: `404` when message includes `not found`
+- Unhandled server errors: `500` with generic client-safe message
 
-## `/data` contract
+## Important constants (in `hdf5.py`)
 
-Required:
-- `path`
-- `mode=matrix|heatmap|line`
+- `/data` guardrails: `MAX_JSON_ELEMENTS`, `MAX_MATRIX_ROWS`, `MAX_MATRIX_COLS`, `MAX_LINE_POINTS`, `MAX_LINE_EXACT_POINTS`, `MAX_HEATMAP_SIZE`
+- export guardrails: `MAX_EXPORT_CSV_CELLS`, `MAX_EXPORT_LINE_POINTS`
+- chunk defaults: `DEFAULT_EXPORT_MATRIX_CHUNK_ROWS`, `DEFAULT_EXPORT_MATRIX_CHUNK_COLS`, `DEFAULT_EXPORT_LINE_CHUNK_POINTS`
 
-Shared params:
-- `display_dims`
-- `fixed_indices`
-- `etag`
+## Registered in
 
-Mode-specific params:
-- matrix: `row_offset`, `row_limit`, `col_offset`, `col_limit`, `row_step`, `col_step`
-- heatmap: `max_size`, `include_stats`
-- line: `line_dim`, `line_index`, `line_offset`, `line_limit`, `quality`, `max_points`
-
-Behavior:
-- Uses dataset cache for shape/dtype metadata.
-- Uses data cache for finalized response payloads.
-- Enforces line exact window rules and heatmap size clamp rules.
-
-## `/export/csv` contract
-
-Required:
-- `path`
-- `mode=matrix|heatmap|line`
-
-Matrix and heatmap export behavior:
-- Streams CSV with BOM.
-- Uses matrix reader calls in chunks.
-- Supports window params and chunk params (`chunk_rows`, `chunk_cols`).
-- Enforces `MAX_EXPORT_CSV_CELLS`.
-
-Line export behavior:
-- Streams CSV with columns `index,base,...compare`.
-- Supports `line_dim`, `line_index`, `line_offset`, `line_limit`, `chunk_points`.
-- Supports `compare_paths` (up to 4).
-- Validates compare dtype numeric and compare shape equal to base shape.
-- Enforces `MAX_EXPORT_LINE_POINTS`.
-
-## Route-level limits and defaults
-
-Key constants in `hdf5.py`:
-- `MAX_JSON_ELEMENTS`, `MAX_ELEMENTS`
-- `MAX_MATRIX_ROWS`, `MAX_MATRIX_COLS`
-- `MAX_LINE_POINTS`, `MAX_LINE_EXACT_POINTS`
-- `MAX_HEATMAP_SIZE`, `DEFAULT_MAX_SIZE`
-- `MAX_EXPORT_CSV_CELLS`, `MAX_EXPORT_LINE_POINTS`
-- export chunk defaults for matrix and line
-
-## Cache usage in routes
-
-- files cache: list file objects
-- hdf5 cache: children, metadata, preview payloads
-- dataset cache: dataset shape/ndim/dtype metadata
-- data cache: finalized `/data` response payloads
-
-## Registered by
-
-`backend/app.py`:
-- `app.register_blueprint(files_bp, url_prefix='/files')`
-- `app.register_blueprint(hdf5_bp, url_prefix='/files')`
+- `backend/app.py`
+  - `app.register_blueprint(files_bp, url_prefix='/files')`
+  - `app.register_blueprint(hdf5_bp, url_prefix='/files')`

@@ -78,6 +78,7 @@ class SimpleCache:
                 'created_at': time.time()
             }
 
+            # OrderedDict front is the least-recently-used entry.
             while len(self._cache) > self.max_entries:
                 evicted_key, _ = self._cache.popitem(last=False)
                 logger.debug(f"Cache EVICT: {evicted_key}")

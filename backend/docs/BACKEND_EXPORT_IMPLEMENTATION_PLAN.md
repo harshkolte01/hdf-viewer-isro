@@ -1,122 +1,90 @@
-# Backend Export Implementation Plan
+# Backend CSV Export Implementation
 
-As of 2026-02-22.
+File of record: `backend/src/routes/hdf5.py` (`export_csv` route).
 
-## Purpose
-Define backend support required for production-grade CSV export used by `old_web` export actions.
+This document explains how CSV export is implemented today.
 
-## Why backend support is needed
-Current `/files/<key>/data` is optimized for visualization windows and JSON payload limits.
-- Matrix has row/col caps for render windows.
-- Heatmap mode is sampled/clamped for display.
-- Line exact mode has strict window cap.
-For robust `CSV (Full)`, backend should stream raw data safely and efficiently.
+## Endpoint
 
-## Recommended API
-
-### 1. Streaming CSV endpoint
 `GET /files/<key>/export/csv`
 
-Query params:
-- required:
+Required query params:
 - `path`
-- `mode=matrix|line|heatmap`
-- optional common:
-- `display_dims`
-- `fixed_indices`
-- `etag`
-- mode-specific:
-- matrix/heatmap full slice:
-- `row_offset` (default 0)
-- `row_limit` (default all)
-- `col_offset` (default 0)
-- `col_limit` (default all)
-- line full/profile:
-- `line_dim`
-- `line_index`
-- `line_offset` (default 0)
-- `line_limit` (default all)
-- compare optional:
-- `compare_paths` (comma-separated absolute dataset paths)
+- `mode=matrix|heatmap|line`
 
 Response:
-- `200 text/csv; charset=utf-8`
-- `Content-Disposition: attachment; filename="...csv"`
-- streamed/chunked body
+- streamed CSV (`text/csv; charset=utf-8`)
+- UTF-8 BOM emitted first
+- download filename from `_build_export_filename(...)`
 
-Error response:
-- JSON error payload (4xx/5xx) before stream starts.
+## Shared processing steps
 
-### 2. Optional async export jobs (large enterprise scale)
-- `POST /files/<key>/exports`
-- `GET /files/<key>/exports/<job_id>`
-- `GET /files/<key>/exports/<job_id>/download`
-Use this only if synchronous streaming still risks gateway timeout.
+1. normalize `<key>`
+2. validate required params
+3. read base dataset metadata through dataset-cache helper
+4. normalize selection (`display_dims`, `fixed_indices`)
+5. validate mode-specific rules
+6. stream rows via generator
 
-## Data correctness rules
-- Export uses raw numeric values (not display-formatted strings).
-- Heatmap full CSV must export full 2D slice (not sampled heatmap render payload).
-- Line compare export aligns all series on x-index; missing points emit empty field.
-- CSV includes header row.
+## Matrix and heatmap export behavior
 
-## Implementation Design
+Although mode may be `matrix` or `heatmap`, CSV export uses matrix-window reads (`reader.get_matrix`) so output remains rectangular.
 
-### Route layer (`backend/src/routes/hdf5.py`)
-- Add new export route with explicit validation branch.
-- Reuse existing selection normalization (`display_dims`, `fixed_indices`, line params).
-- Validate compare paths against:
-- same file
-- dataset-only
-- numeric dtype
-- same ndim
-- same shape
+Supported params:
+- `row_offset`, `row_limit`
+- `col_offset`, `col_limit`
+- `chunk_rows`, `chunk_cols`
 
-### Reader layer (`backend/src/readers/hdf5_reader.py`)
-- Add chunk iterators (generator style):
-- matrix row-block iterator
-- line window iterator
-- compare line multi-series iterator
-- Emit rows as CSV-safe strings incrementally.
+Implementation notes:
+- export window is clamped to dataset bounds
+- empty windows return `400`
+- total cell count must be <= `MAX_EXPORT_CSV_CELLS`
+- data is read chunk-by-chunk and appended into row buffers
+- first column is row index (`row\col` header pattern)
 
-### Streaming
-- Use Flask streaming response (`Response(generator(), mimetype="text/csv")`).
-- Avoid building full CSV in memory.
-- Flush periodic chunks.
+## Line export behavior
 
-### Limits and safety
-- Dedicated export limits separate from render limits.
-- Max concurrent exports guard.
-- Max stream duration and max rows/points safeguards.
-- Graceful abort on client disconnect.
+Supported params:
+- `line_dim`
+- `line_index`
+- `line_offset`
+- `line_limit`
+- `chunk_points`
+- `compare_paths` (comma-separated)
 
-## TODO (Backend)
+Rules:
+- line dataset dtype must be numeric
+- `line_limit` must be > 0 and <= `MAX_EXPORT_LINE_POINTS`
+- up to 4 compare paths
+- each compare dataset must:
+  - have same shape as base dataset
+  - be numeric
 
-### P0 - Contract and route skeleton
-- [ ] Finalize endpoint contract and query schema.
-- [ ] Add `/export/csv` route skeleton with validation and error responses.
-- [ ] Add unit tests for validation paths (missing params, bad mode, invalid dims/index).
+Streaming behavior:
+- each chunk reads base line window with `reader.get_line(..., step=1)`
+- each compare path is read for same chunk window
+- output columns are: `index,base,<compare...>`
 
-### P1 - Matrix and heatmap-full CSV
-- [ ] Implement matrix slice streaming CSV generator.
-- [ ] Implement heatmap full export using matrix-plane iterator (raw data).
-- [ ] Add tests for CSV row/column counts and headers.
+## CSV safety behavior
 
-### P2 - Line CSV and compare
-- [ ] Implement line streaming generator.
-- [ ] Add optional compare series export (`compare_paths`).
-- [ ] Add alignment tests for uneven returned points/steps.
+Function `_csv_escape` applies:
+- quote escaping for commas/quotes/newlines
+- spreadsheet formula protection:
+  - if trimmed cell starts with `=`, `+`, `-`, or `@`
+  - prefix with single quote (`'`)
 
-### P3 - Hardening
-- [ ] Add export-specific cache policy decision (usually no cache, stream direct).
-- [ ] Add request metrics/logging for export duration and size.
-- [ ] Add concurrency guard + cancellation handling.
-- [ ] Add integration tests against realistic large datasets.
+This reduces CSV formula-injection risk when opened in spreadsheet tools.
 
-## Compatibility with existing frontend plan
-- Frontend can ship `Displayed` and `PNG` exports without backend changes.
-- Frontend `CSV (Full)` should switch to this endpoint once available.
+## Performance controls
 
-## What should be done first
-1. Lock backend export API contract (params + CSV headers + error model).
-2. Implement matrix/heatmap full CSV streaming first.
-3. Implement line + compare streaming next.
+- chunked reading (`chunk_rows`, `chunk_cols`, `chunk_points`)
+- streaming response (`stream_with_context`) to avoid large in-memory buffers
+- dataset metadata caching avoids repeated shape/dtype opens across requests
+
+## Related tests
+
+See `backend/tests/test_hdf5_routes.py`:
+- matrix window export
+- line compare paths
+- formula-like escaping
+- heatmap-mode CSV behavior

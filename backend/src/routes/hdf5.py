@@ -214,6 +214,7 @@ def _compute_safe_heatmap_size(rows, cols, requested_size):
     if projected_cells(requested_size) <= cap:
         return requested_size
 
+    # Binary-search the largest size that still fits response element limits.
     low = 1
     high = requested_size
     best = 1
@@ -644,6 +645,8 @@ def get_data(key):
             key_name for key_name in request.args.keys() if key_name not in supported_query_keys
         }
         excluded_query_keys.add('etag')
+        # Deterministic argument serialization avoids cache misses caused only by
+        # query-parameter ordering differences.
         args_key = _serialize_request_args(exclude_keys=excluded_query_keys)
         data_cache_key = make_cache_key('data', key, cache_version, args_key)
 
@@ -844,6 +847,7 @@ def get_data(key):
             elif line_quality == 'overview':
                 quality_applied = 'overview'
             else:
+                # `auto` keeps small windows exact and downsamples very large windows.
                 quality_applied = 'exact' if requested_points <= MAX_LINE_EXACT_POINTS else 'overview'
 
             line_step = 1
@@ -1027,6 +1031,7 @@ def export_csv(key):
                     current_rows = min(chunk_rows, row_end - row_cursor)
                     row_buffers = [[row_cursor + row_index] for row_index in range(current_rows)]
 
+                    # Read chunked blocks to keep memory bounded for large exports.
                     for col_cursor in range(col_offset, col_end, chunk_cols):
                         current_cols = min(chunk_cols, col_end - col_cursor)
                         block = reader.get_matrix(
@@ -1131,6 +1136,7 @@ def export_csv(key):
                 raise ValueError(f"Compare dataset '{compare_path}' shape does not match base dataset.")
             if not _is_numeric_dtype_string(compare_dtype):
                 raise ValueError(f"Compare dataset '{compare_path}' is not numeric.")
+            # Use tail segment as compact CSV column label.
             compare_targets.append({
                 'path': compare_path,
                 'label': compare_path.split('/')[-1] or compare_path

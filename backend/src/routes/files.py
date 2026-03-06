@@ -64,6 +64,7 @@ def list_files():
             logger.info("Files list requested - CACHE HIT")
             files_count = sum(1 for entry in cached_data if entry.get('type') == 'file')
             folders_count = sum(1 for entry in cached_data if entry.get('type') == 'folder')
+            # Truncation is based on file rows only; folder rows are synthetic.
             truncated = files_count >= max_items
             return jsonify({
                 'success': True,
@@ -89,6 +90,7 @@ def list_files():
         entries = storage.list_objects(**list_kwargs)
         files_count = sum(1 for entry in entries if entry.get('type') == 'file')
         folders_count = sum(1 for entry in entries if entry.get('type') == 'folder')
+        # Truncation is based on file rows only; folder rows are synthetic.
         truncated = files_count >= max_items
         
         # Store in cache

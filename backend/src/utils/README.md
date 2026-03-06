@@ -1,6 +1,6 @@
 # backend/src/utils
 
-Shared utilities used by backend routes.
+Shared utility code used by route modules.
 
 ## File
 
@@ -8,7 +8,9 @@ Shared utilities used by backend routes.
 
 ## `SimpleCache`
 
-Thread-safe in-memory TTL cache backed by `OrderedDict` + `Lock`.
+Thread-safe in-memory TTL cache using:
+- `OrderedDict` for insertion/access order
+- `Lock` for concurrent access safety
 
 Implemented methods:
 - `get(key)`
@@ -18,26 +20,26 @@ Implemented methods:
 - `clear_pattern(pattern)`
 - `stats()`
 
-Behavior notes:
-- Expired entries are dropped on read.
-- Entry order is updated on hit/set.
-- Oldest entries are evicted when `max_entries` is exceeded.
+Behavior:
+- Expired keys are dropped on read.
+- Hits move keys to the end of the ordered map.
+- When `max_entries` is exceeded, the oldest entry is evicted.
 
-## Global cache instances
+## Global caches
 
-- `_files_cache = SimpleCache(default_ttl=30, max_entries=200)`
-- `_hdf5_cache = SimpleCache(default_ttl=300, max_entries=3000)`
-- `_dataset_cache = SimpleCache(default_ttl=300, max_entries=3000)`
-- `_data_cache = SimpleCache(default_ttl=120, max_entries=1200)`
+- files cache: `SimpleCache(default_ttl=30, max_entries=200)`
+- hdf5 cache: `SimpleCache(default_ttl=300, max_entries=3000)`
+- dataset cache: `SimpleCache(default_ttl=300, max_entries=3000)`
+- data cache: `SimpleCache(default_ttl=120, max_entries=1200)`
 
-Public accessors:
+Accessors:
 - `get_files_cache()`
 - `get_hdf5_cache()`
 - `get_dataset_cache()`
 - `get_data_cache()`
 
 Helper:
-- `make_cache_key(*parts)` joins key segments with `:`.
+- `make_cache_key(*parts)` -> `:`-joined key string
 
 ## Imported by
 

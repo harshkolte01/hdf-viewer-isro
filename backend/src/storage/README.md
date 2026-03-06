@@ -1,6 +1,6 @@
 # backend/src/storage
 
-Filesystem storage integration layer.
+Filesystem storage abstraction used by routes and reader code.
 
 ## Files
 
@@ -11,33 +11,42 @@ Filesystem storage integration layer.
 
 - `FilesystemStorageClient`
 
-Reads environment config:
-- `STORAGE_ROOT` (optional explicit root)
-- `STORAGE_PATH_LINUX`
-- `STORAGE_PATH_WINDOWS`
+This backend uses local/network filesystem paths only. There is no active bucket/object-storage implementation.
+
+## Storage root resolution
+
+Environment variables read in priority order:
+
+1. `STORAGE_ROOT` (explicit override)
+2. OS-aware fallback:
+   - Windows: `STORAGE_PATH_WINDOWS`, then `STORAGE_PATH_LINUX`
+   - Linux/macOS: `STORAGE_PATH_LINUX`, then `STORAGE_PATH_WINDOWS`
+
+If no usable value exists, initialization raises `ValueError`.
 
 ## Implemented operations
 
 - `list_objects(prefix='', include_folders=False, max_items=None)`
-- Recursively lists files under the active storage root.
-- Can include derived folder rows from file keys.
-- Returns `key`, `size`, `last_modified`, `etag`, `type`, `is_folder`.
+  - Recursively walks storage root.
+  - Returns file rows and optional derived folder rows.
 
 - `get_object_metadata(key)`
-- Reads local file metadata (`size`, `last_modified`, synthetic `etag`, `content_type`).
+  - Returns `size`, `last_modified`, synthetic `etag`, `content_type`.
 
 - `open_object_stream(key)`
-- Opens file stream for reading.
+  - Opens the object in binary-read mode.
 
 - `get_object_range(key, start, end)`
-- Reads byte range from a file.
+  - Reads inclusive byte ranges.
 
 - `resolve_object_path(key)`
-- Resolves a key to an absolute path and validates it stays inside storage root.
+  - Normalizes key and enforces path remains inside storage root.
 
-## Singleton accessor
+## Security and safety
 
-- `get_storage_client()` returns global `FilesystemStorageClient` instance.
+- Normalizes separators to `/`.
+- Rejects `..` traversal in prefix/key parsing.
+- Verifies resolved path is a child of configured root (`relative_to` check).
 
 ## Imported by
 

@@ -1,137 +1,151 @@
 # HDF Viewer Backend
 
-Flask backend for browsing HDF5 files stored on Linux/Windows filesystem paths and serving metadata, preview, windowed data, and CSV export APIs.
+Flask service that reads HDF5 files from a filesystem path (Linux mount, Windows drive, or UNC share) and serves APIs for:
+- file browsing
+- HDF5 tree navigation
+- dataset metadata
+- preview payloads
+- bounded data windows
+- streamed CSV export
 
-## What is currently implemented
+The active implementation is filesystem-only. There is no bucket/object-storage dependency in runtime code.
 
-- Flask app bootstrap with CORS, health endpoint, and endpoint dashboard page.
-- File list APIs with cache refresh support.
-- HDF5 route APIs for children, metadata, preview, windowed data, and streamed CSV export.
-- Reader layer backed by filesystem streams + `h5py + numpy`.
-- Storage layer backed by local/network filesystem traversal APIs.
-- Thread-safe in-memory TTL caches with entry limits.
-- Route tests covering preview/data validations and CSV export flows.
+## Runtime at a glance
 
-## Quick start
+- App entry: `backend/app.py`
+- Default host/port: `0.0.0.0:5000`
+- Route prefix for file APIs: `/files`
+- Storage backend: `backend/src/storage/filesystem_client.py`
+- HDF5 reader: `backend/src/readers/hdf5_reader.py`
+- Route layer: `backend/src/routes/files.py`, `backend/src/routes/hdf5.py`
+- Cache layer: `backend/src/utils/cache.py`
 
-1. Create and activate a virtual environment.
+## How requests flow
+
+1. Flask route validates query/path params.
+2. Route checks in-memory cache (where applicable).
+3. Route calls `HDF5Reader` or storage client.
+4. Reader resolves dataset/object and performs bounded slicing.
+5. Route returns JSON payload (or streaming CSV for export).
+
+## Project structure
+
+```text
+backend/
+  app.py                       # Flask app bootstrap and blueprint wiring
+  wsgi.py                      # WSGI entrypoint for production servers
+  .env.example                 # Environment template
+  src/
+    routes/
+      files.py                 # /files list + cache refresh endpoints
+      hdf5.py                  # children/meta/preview/data/export endpoints
+    readers/
+      hdf5_reader.py           # HDF5 traversal and data extraction
+    storage/
+      filesystem_client.py     # Filesystem storage abstraction
+    utils/
+      cache.py                 # Thread-safe TTL caches
+  tests/
+    test_files_routes.py       # File-route unit tests
+    test_hdf5_routes.py        # HDF5 route unit tests
+  scripts/
+    benchmark.py               # Local benchmark helper
+    verify_range_reads.py      # Range-read verification helper
+    test_storage.py            # Storage client smoke checks
+  docs/                        # Full backend documentation set
+```
+
+## Environment configuration
+
+Set values in `backend/.env` (or exported environment variables).
+
+Required (at least one path source must resolve):
+- `STORAGE_ROOT` (explicit root; highest priority)
+- or `STORAGE_PATH_LINUX` / `STORAGE_PATH_WINDOWS`
+
+Path selection behavior in `FilesystemStorageClient`:
+- If `STORAGE_ROOT` is set, it is used.
+- On Windows (`os.name == "nt"`), fallback order is: `STORAGE_PATH_WINDOWS`, then `STORAGE_PATH_LINUX`.
+- On Linux/macOS, fallback order is: `STORAGE_PATH_LINUX`, then `STORAGE_PATH_WINDOWS`.
+
+Optional server settings:
+- `HOST` (default `0.0.0.0`)
+- `PORT` (default `5000`)
+- `DEBUG` (`true`/`false`, default `false` in code)
+
+## Run locally
+
+From `backend/`:
 
 ```bash
 python -m venv venv
-venv\Scripts\activate
-```
-
-2. Install dependencies.
-
-```bash
+venv\Scripts\activate  # Windows
 pip install -r requirements.txt
-```
-
-3. Set required environment variables.
-- `STORAGE_PATH_LINUX` (example: `/mnt/hdf5-storage`)
-- `STORAGE_PATH_WINDOWS` (example: `\\storage-server\\hdf5-storage`)
-
-4. (Optional) set runtime variables.
-- `STORAGE_ROOT` (explicit override root, takes precedence)
-- `HOST` (default `0.0.0.0`)
-- `PORT` (default `5000`)
-- `DEBUG` (`true` or `false`, default `false`)
-- `BACKEND_PUBLIC_URL` or `PUBLIC_BASE_URL` or `API_BASE_URL` or `BACKEND_URL`
-
-5. Run the server.
-
-```bash
 python app.py
 ```
 
-For production WSGI runtimes, use `backend/wsgi.py` (example):
+Production WSGI example:
 
 ```bash
 gunicorn wsgi:app --bind 0.0.0.0:5000
 ```
 
-## Main endpoints
+## API overview
 
 - `GET /`
-- Renders backend dashboard (`templates/index.html`) with endpoint catalog and health status.
-
+  - Service info payload.
 - `GET /health`
-- Returns service health payload with timestamp.
-
+  - Health payload with UTC timestamp.
 - `GET /files/`
-- Lists objects in configured storage root.
-- Returns both `file` and `folder` entries by default.
-- Optional query params:
-  - `prefix` (string): key prefix to list.
-  - `include_folders` (bool, default `true`): include derived folder entries.
-  - `max_items` (int, default `20000`, max `50000`): max file entries per response.
-
+  - File/folder listing with `prefix`, `include_folders`, `max_items`.
 - `POST /files/refresh`
-- Clears file-list cache.
-
+  - Clears file listing cache.
 - `GET /files/<key>/children`
-- Lists immediate HDF5 children at `path` (default `/`).
-- Accepts keys with nested folder paths (for example `Folder_1/random_05.h5`).
-
+  - Children under HDF5 `path` (default `/`).
 - `GET /files/<key>/meta`
-- Returns metadata for one HDF5 object (`path` required).
-- Accepts keys with nested folder paths.
-
+  - Metadata for required `path`.
 - `GET /files/<key>/preview`
-- Returns preview payload for lightweight render paths.
-- Supports `mode=auto|line|table|heatmap`, `detail=fast|full`, `include_stats`, `display_dims`, `fixed_indices`, `max_size`, `etag`.
-- Accepts keys with nested folder paths.
-
+  - Preview payload (`mode`, `detail`, dimensions, stats options).
 - `GET /files/<key>/data`
-- Returns bounded data payload for `mode=matrix|heatmap|line`.
-- Enforces hard limits before data reads.
-- Accepts keys with nested folder paths.
-
+  - Bounded matrix/heatmap/line windows with strict limits.
 - `GET /files/<key>/export/csv`
-- Streams CSV for `mode=matrix|heatmap|line`.
-- Supports matrix/heatmap window params (`row_offset`, `row_limit`, `col_offset`, `col_limit`) and line params (`line_dim`, `line_index`, `line_offset`, `line_limit`, `chunk_points`, `compare_paths`).
-- Accepts keys with nested folder paths.
+  - Streaming CSV export for matrix/heatmap/line modes.
 
-## Runtime limits in routes (`src/routes/hdf5.py`)
+For full parameter contracts and edge-case rules, see `backend/docs/API_REFERENCE.md`.
 
-- `MAX_ELEMENTS = 1_000_000`
-- `MAX_JSON_ELEMENTS = 500_000`
-- `MAX_MATRIX_ROWS = 2000`
-- `MAX_MATRIX_COLS = 2000`
-- `MAX_LINE_POINTS = 5000`
-- `MAX_LINE_EXACT_POINTS = 20000`
-- `MAX_HEATMAP_SIZE = 1024`
-- `MAX_EXPORT_CSV_CELLS = 10_000_000`
-- `MAX_EXPORT_LINE_POINTS = 5_000_000`
+## Caching
 
-## Cache model (`src/utils/cache.py`)
+Global in-memory TTL caches in `src/utils/cache.py`:
+- files cache: 30s, 200 entries
+- hdf5 cache: 300s, 3000 entries
+- dataset cache: 300s, 3000 entries
+- data cache: 120s, 1200 entries
 
-- Files cache: TTL 30s, max 200 entries.
-- HDF5 cache: TTL 300s, max 3000 entries.
-- Dataset cache: TTL 300s, max 3000 entries.
-- Data cache: TTL 120s, max 1200 entries.
+The `/data` route builds deterministic cache keys from normalized/sorted query args.
 
-## Folder map
+## Limits and safety controls
 
-- `app.py`: Flask app bootstrap and blueprint registration.
-- `templates/index.html`: backend dashboard UI.
-- `src/routes/`: HTTP route layer.
-- `src/readers/`: HDF5 read and payload shaping layer.
-- `src/storage/`: filesystem storage client wrapper.
-- `src/utils/`: cache utility and shared helpers.
-- `tests/test_hdf5_routes.py`: route tests.
+Main route-level limits in `src/routes/hdf5.py`:
+- JSON element limits for `/data`
+- matrix max rows/cols
+- line exact/overview thresholds
+- heatmap max size
+- CSV export cell/point limits
+
+Safety behaviors:
+- object-key/prefix traversal checks in filesystem client
+- CSV formula-injection escaping on export
+- not-found style errors mapped to 404 where possible
 
 ## Tests
 
-Run unit tests for HDF5 route behavior:
+From `backend/`:
 
 ```bash
-python -m unittest tests/test_hdf5_routes.py
+python -m unittest tests/test_files_routes.py tests/test_hdf5_routes.py
 ```
 
-## Contributor notes
+## Full docs
 
-- `app.url_map.strict_slashes = False` is enabled to avoid slash redirect issues.
-- CORS currently allows all origins (`origins="*"`).
-- `/export/csv` is the backend contract used by frontend full CSV exports.
-- CSV export now prefixes formula-like cells to prevent spreadsheet formula injection.
+Start here for complete backend documentation:
+- `backend/docs/README.md`

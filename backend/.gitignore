@@ -16,10 +16,7 @@ scripts/__pycache__/
 instance/
 .webassets-cache
 
-# Environment
-.env.local
-.env.*.local
-.env
+
 
 # IDE
 .vscode/

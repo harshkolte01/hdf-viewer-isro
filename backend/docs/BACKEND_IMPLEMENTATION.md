@@ -1,130 +1,199 @@
-# Backend Implementation (HDF Viewer)
+# Backend Implementation Walkthrough
 
-As of 2026-02-05.
+This document explains how the backend is implemented today, in easy language, with direct mapping to source files.
 
-## Purpose
-Flask API for browsing HDF5 files stored in MinIO/S3 with lazy navigation, metadata inspection, preview generation, and bounded data extraction for charts/tables.
+## 1. App bootstrap (`backend/app.py`)
 
-## Structure
-- `backend/app.py` wires logging, CORS, health endpoint, and registers blueprints.
-- `backend/src/routes/files.py` implements file listing and cache refresh.
-- `backend/src/routes/hdf5.py` implements HDF5 navigation, metadata, preview, and `/data`.
-- `backend/src/readers/hdf5_reader.py` performs HDF5 reads via s3fs + h5py and builds preview/data payloads.
-- `backend/src/storage/minio_client.py` wraps S3/MinIO operations.
-- `backend/src/utils/cache.py` provides in-memory TTL caches.
+What happens on startup:
+- `.env` is loaded with `load_dotenv()`.
+- logging level is derived from `DEBUG`.
+- Flask app is created with `strict_slashes = False`.
+- CORS is enabled for all origins.
+- blueprints are registered:
+  - `files_bp` at `/files`
+  - `hdf5_bp` at `/files`
 
-## Configuration
-Required environment variables:
-- `S3_ENDPOINT`
-- `S3_ACCESS_KEY`
-- `S3_SECRET_KEY`
-- `STORAGE_ROOT` (preferred) or `STORAGE_PATH_LINUX` / `STORAGE_PATH_WINDOWS`
+Available top-level routes:
+- `GET /` returns service info JSON.
+- `GET /health` returns service health and UTC timestamp.
 
-Optional environment variables:
-- `S3_REGION` (default `us-east-1`)
-- `HOST` (default `0.0.0.0`)
-- `PORT` (default `5000`)
-- `DEBUG` (default `False`)
+## 2. Storage backend (`backend/src/storage/filesystem_client.py`)
 
-## Dependencies
-- `flask==3.0.0`
-- `flask-cors==4.0.0`
-- `python-dotenv==1.0.0`
-- `boto3==1.34.34`
-- `numpy==1.26.4`
-- `h5py==3.10.0`
-- `s3fs==2024.2.0`
+`FilesystemStorageClient` is the only active storage implementation.
 
-## Implemented API
+### Root path selection
 
-### GET `/health`
-Returns service status plus UTC timestamp.
+`_resolve_storage_root()` chooses a root path using:
+1. `STORAGE_ROOT` (if set)
+2. otherwise OS-aware fallback:
+   - Windows: `STORAGE_PATH_WINDOWS`, then `STORAGE_PATH_LINUX`
+   - Linux/macOS: `STORAGE_PATH_LINUX`, then `STORAGE_PATH_WINDOWS`
 
-### GET `/files`
-Lists objects in the configured filesystem storage root.
-- Uses a 30s in-memory cache (`cached` flag in response).
-- Each item includes `key`, `size`, `last_modified`, `etag`.
+### Path safety
 
-### POST `/files/refresh`
-Clears the files list cache.
+Before any file access:
+- key/prefix are normalized (`\\` -> `/`, remove leading `/`, reject `..`)
+- resolved absolute path must stay under storage root (`relative_to` check)
 
-### GET `/files/<key>/children?path=/some/path`
-Lists immediate children at a given HDF5 path.
-- Default `path` is `/`.
-- Cached by `(key, etag, path)` for 5 minutes.
-- Group entries include: `name`, `path`, `type=group`, `num_children`.
-- Dataset entries include: `name`, `path`, `type=dataset`, `shape`, `dtype`, `size`, `ndim`.
-- Dataset extras when available: `chunks`, `compression`.
-- Dataset attributes: up to 10 key/value pairs, plus `num_attributes` and `attributes_truncated` when applicable.
+This protects against traversal attacks and accidental root escape.
 
-### GET `/files/<key>/meta?path=/some/path`
-Returns detailed metadata for a single object.
-- Requires `path` query parameter.
-- Cached by `(key, etag, path)` for 5 minutes.
-- Common fields: `name`, `path`, `kind`, `attributes` (up to 20 entries).
-- Group fields: `num_children`.
-- Dataset fields: `shape`, `dtype`, `size`, `ndim`, `chunks`, `compression`, `compression_opts`.
-- Type detail fields: `type` (class/signed/endianness/size), `rawType` (low-level dtype info), `filters` (compression/shuffle/fletcher32).
+### Operations used by the backend
 
-### GET `/files/<key>/preview?path=/some/path`
-Generates a fast preview payload for datasets.
-- Cached by `(key, etag, path, preview_type, display_dims, fixed_indices, max_size, mode)` for 5 minutes.
-- Common fields: `path`, `dtype`, `shape`, `ndim`, `preview_type`, `stats`, `table`, `plot`, `profile`, `limits`.
-- 1D previews return a table (up to 1000 values) and a downsampled line plot.
-- 2D/ND previews return a table (up to 200x200), a heatmap plot (downsampled, max 512 per axis, capped to ~200k cells), and a row profile line.
-- Non-numeric datasets report `stats.supported=false` and `plot.supported=false`.
-- `display_dims` and `fixed_indices` control the 2D plane for ND datasets.
+- `list_objects(...)` recursively walks files and can derive folder rows.
+- `get_object_metadata(key)` returns `etag`, size, timestamps.
+- `open_object_stream(key)` gives a binary stream for `h5py.File`.
+- `get_object_range(key, start, end)` supports range reads (used by helper scripts/tests).
 
-### GET `/files/<key>/data?path=/some/path&mode=matrix|heatmap|line`
-Returns bounded data slices for tables and charts. This endpoint is implemented with strict validation.
+## 3. Route layer
 
-Shared behavior:
-- Requires `path` and `mode`.
-- Supports `display_dims` and `fixed_indices` with negative indexing.
-- Enforces element caps (`max_elements` and `max_json_elements`).
+### 3.1 File routes (`backend/src/routes/files.py`)
 
-Matrix mode (`mode=matrix`):
-- Params: `row_offset`, `row_limit`, `col_offset`, `col_limit`, `row_step`, `col_step`.
-- Defaults: `row_limit=100`, `col_limit=100`, steps default to `1`.
-- Hard caps: max 2000x2000 output, plus overall element limits.
-- Returns: `data`, `shape`, `dtype`, `row_offset`, `col_offset`, `downsample_info`, plus `source_shape`, `source_ndim`, `display_dims`, `fixed_indices`.
+`GET /files/`
+- validates:
+  - `include_folders` as bool
+  - `max_items` in `[1, 50000]`
+- checks files cache first
+- on miss, calls `storage.list_objects(...)`
+- response includes:
+  - `files` (mixed file + optional folder entries)
+  - `files_count`, `folders_count`, `truncated`, `cached`
 
-Heatmap mode (`mode=heatmap`):
-- Param: `max_size` (default 512, capped at 1024).
-- Returns: `data`, `shape`, `dtype`, `stats`, `downsample_info`, `sampled`, plus `source_shape`, `source_ndim`, `display_dims`, `fixed_indices`.
+`POST /files/refresh`
+- clears files cache
 
-Line mode (`mode=line`):
-- Params: `line_dim` (row, col, or numeric dim), `line_index`, `line_offset`, `line_limit`.
-- Auto-downsamples to max 5000 points.
-- Returns: `data`, `shape`, `dtype`, `axis`, `index`, `downsample_info`, plus `source_shape`, `source_ndim`, `display_dims`, `fixed_indices`.
+### 3.2 HDF5 routes (`backend/src/routes/hdf5.py`)
 
-## Caching
-- Files cache: 30s (`_files_cache`).
-- HDF5 cache: 300s (`_hdf5_cache`) for children/meta/preview payloads.
-- Dataset info cache: 300s (`_dataset_cache`) to avoid repeated metadata reads.
-- Cache keys include S3 `etag` for automatic invalidation on object changes.
+Shared helper concepts:
+- normalize route key (`_normalize_object_key`) to support encoded separators
+- parse and validate params (`_parse_*` helpers)
+- selection normalization (`_normalize_selection`):
+  - choose visible dims (`display_dims`)
+  - fill/fix non-visible dims (`fixed_indices`)
+- map not-found errors to HTTP 404 when possible
 
-## Storage Layer
-- `MinIOClient` wraps S3-compatible calls: list objects, HEAD metadata, range reads, and full stream reads.
-- HDF5 access uses `s3fs.S3FileSystem` + `h5py` with lazy reads.
+#### `/children`
+- checks storage metadata to get file `etag`
+- uses hdf5 cache key: `children:key:etag:path`
+- on miss, calls `reader.get_children(...)`
 
-## Data Sanitization
-All payloads are JSON-safe:
-- Bytes are decoded to UTF-8 with fallback.
-- Numpy scalars and arrays are converted to native types/lists.
-- Complex values are stringified.
-- Non-finite floats are normalized to `null`.
+#### `/meta`
+- requires `path`
+- uses hdf5 cache key: `meta:key:etag:path`
+- on miss, calls `reader.get_metadata(...)`
 
-## Limits and Safeguards
-- Preview limits: `MAX_PREVIEW_ELEMENTS=250k`, `MAX_HEATMAP_SIZE=512`, `MAX_HEATMAP_ELEMENTS=200k`, `MAX_LINE_POINTS=5000`.
-- `/data` limits: `MAX_ELEMENTS=1,000,000`, `MAX_JSON_ELEMENTS=500,000`, `MAX_MATRIX_ROWS=2000`, `MAX_MATRIX_COLS=2000`, `MAX_HEATMAP_SIZE=1024`.
+#### `/preview`
+- requires `path`
+- supports:
+  - `mode=auto|line|table|heatmap`
+  - `detail=fast|full`
+  - `include_stats`
+  - `display_dims`, `fixed_indices`
+  - `max_size`
+  - `etag` (cache version hint)
+- cache key includes normalized request shape + `cache_version`
+- on miss, forwards options to `reader.get_preview(...)`
 
-## Scripts
-- `backend/scripts/benchmark.py` (performance measurements).
-- `backend/scripts/test_minio.py` (connectivity check).
-- `backend/scripts/verify_range_requests.py` (range header verification).
+#### `/data`
+- requires `path` and `mode`
+- `mode=matrix|heatmap|line`
+- builds deterministic cache key from sorted query args (excluding unsupported keys)
+- gets dataset shape/dtype/ndim through dataset cache
+- enforces limits before read
 
-## Notes and Gaps
-- `/benchmark` is not registered in `backend/app.py` (script exists, route does not).
-- CORS is currently hardcoded to allow all origins; `CORS_ORIGINS` is not used.
-- Authn/authz and persistent cache (e.g., Redis) are not implemented.
+Mode behavior:
+- `matrix`
+  - window params: `row_offset`, `row_limit`, `col_offset`, `col_limit`, `row_step`, `col_step`
+  - hard caps: `MAX_MATRIX_ROWS`, `MAX_MATRIX_COLS`
+- `heatmap`
+  - params: `max_size`, `include_stats`
+  - clamps requested size to keep element count safe
+- `line`
+  - params: `line_dim`, `line_index`, `line_offset`, `line_limit`, `quality`, `max_points`
+  - quality policy:
+    - `exact` for small windows
+    - `overview` for downsampled large windows
+    - `auto` chooses between them based on window size
+
+#### `/export/csv`
+- requires `path` and `mode`
+- supports matrix/heatmap/line streaming
+- response is streamed (`stream_with_context`) with UTF-8 BOM
+- CSV cells are escaped, including formula-like values (`= + - @`) to reduce spreadsheet injection risk
+
+Matrix/heatmap export:
+- optional windowing (`row_offset`, `row_limit`, `col_offset`, `col_limit`)
+- chunked reads using `chunk_rows`, `chunk_cols`
+- fails if cell count exceeds `MAX_EXPORT_CSV_CELLS`
+
+Line export:
+- optional `line_*` controls and `chunk_points`
+- optional `compare_paths` (up to 4)
+- compare datasets must match base shape and be numeric
+- fails if point count exceeds `MAX_EXPORT_LINE_POINTS`
+
+## 4. Reader layer (`backend/src/readers/hdf5_reader.py`)
+
+`HDF5Reader` performs all HDF5 object access and slicing.
+
+### Dataset info
+- `get_dataset_info` reads shape/ndim/dtype without full dataset load.
+
+### Preview generation
+- `get_preview` builds a payload with:
+  - `table` preview
+  - `plot` preview (line/heatmap style)
+  - optional `profile`
+  - stats (if enabled and numeric)
+- handles 1D, 2D, and N-D datasets.
+- for N-D, non-displayed dimensions are fixed to index values.
+
+### Data extraction
+- `get_matrix`: returns bounded 2D windows with step-based downsampling.
+- `get_heatmap`: returns downsampled 2D planes and optional min/max stats.
+- `get_line`: returns 1D profiles using either explicit dimension or row/column semantics.
+
+### Metadata and tree
+- `get_children`: immediate children with summary metadata.
+- `get_metadata`: detailed metadata (shape, dtype, type info, filters, chunks, attributes).
+
+### Sanitization
+All payloads are converted to JSON-safe forms:
+- bytes -> string
+- complex -> string
+- NumPy scalars/arrays -> native Python
+- non-finite floats (`NaN`/`Inf`) -> `None`
+
+## 5. Cache layer (`backend/src/utils/cache.py`)
+
+`SimpleCache` is a lock-protected in-memory TTL cache.
+
+- read path drops expired entries
+- write path updates recency and evicts oldest when full
+- global caches are shared by route modules
+
+Cache types:
+- files cache
+- hdf5 metadata/preview cache
+- dataset info cache
+- data response cache
+
+## 6. Tests (`backend/tests/*.py`)
+
+Tests use Flask test client + mocks.
+
+Covered behaviors include:
+- `/files` validation and folder counting
+- `/data` line/heatmap limits and quality behavior
+- preview/detail forwarding
+- not-found -> 404 behavior
+- response cache reuse
+- CSV export windowing and compare paths
+- CSV formula-like escaping
+
+## 7. Notes for maintainers
+
+- `backend/templates/index.html` exists but is not currently served by `GET /`.
+- If endpoint contracts change, update:
+  - `backend/README.md`
+  - `backend/src/*/README.md`
+  - `backend/docs/API_REFERENCE.md`

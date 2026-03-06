@@ -76,6 +76,7 @@ class HDF5Reader:
             if dim in display_dims:
                 continue
             if dim not in fixed_indices:
+                # For higher dimensions, default to midpoint slices so previews are stable.
                 fixed_indices[dim] = self._default_index(shape, dim)
             else:
                 fixed_indices[dim] = self._clamp_index(shape, dim, fixed_indices[dim])
@@ -272,6 +273,7 @@ class HDF5Reader:
                             }
                         )
                         data = obj[tuple(indexer)]
+                        # Keep output orientation aligned with selected display dims order.
                         if needs_transpose and hasattr(data, 'T'):
                             data = data.T
                         data = self._sanitize(data)
@@ -331,6 +333,7 @@ class HDF5Reader:
                         if display_dims is None:
                             raise ValueError("display_dims required for row/col line")
                         row_dim, col_dim = display_dims
+                        # `row` means "take one row, vary along columns".
                         if line_dim == 'col':
                             vary_dim = row_dim
                             axis = 'col'
@@ -970,6 +973,7 @@ class HDF5Reader:
         fixed_indices: Dict[int, int],
         dim_slices: Dict[int, Any]
     ) -> List[Any]:
+        # Build a complete N-D indexer: sliced dims for display, fixed indices for others.
         indexer: List[Any] = []
         for dim in range(ndim):
             if dim in display_dims:
@@ -1002,6 +1006,7 @@ class HDF5Reader:
             finite_mask = np.isfinite(array)
             if bool(finite_mask.all()):
                 return array.tolist()
+            # JSON has no NaN/Inf values, so convert non-finite values to None.
             converted = array.astype(object, copy=True)
             converted[~finite_mask] = None
             return converted.tolist()
