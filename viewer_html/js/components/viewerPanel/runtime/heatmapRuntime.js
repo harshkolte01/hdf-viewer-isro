@@ -346,15 +346,6 @@ function getLayout(width, height) {
   };
 }
 
-function buildLineWindowOptions(totalPoints) {
-  const safeTotal = Math.max(1, Number(totalPoints) || 1);
-  const options = LINE_WINDOW_OPTIONS.filter((size) => size <= safeTotal);
-  if (!options.includes(safeTotal)) {
-    options.push(safeTotal);
-  }
-  return options.sort((left, right) => left - right);
-}
-
 function renderLineToolIcon(kind) {
   if (kind === "pan") {
     return `
@@ -420,9 +411,6 @@ function renderLineIconToolButton(label, dataAttr, kind) {
 }
 
 function renderLinkedLineShellMarkup(config) {
-  const windowOptions = buildLineWindowOptions(config.totalPoints);
-  const maxIndex = Math.max(0, config.totalPoints - 1);
-
   return `
     <div
       class="line-chart-shell line-chart-shell-full heatmap-inline-line-shell"
@@ -457,31 +445,6 @@ function renderLinkedLineShellMarkup(config) {
           <button type="button" class="line-tool-btn" data-line-step-prev="true">Prev</button>
           <button type="button" class="line-tool-btn" data-line-step-next="true">Next</button>
           <button type="button" class="line-tool-btn" data-line-jump-end="true">End</button>
-        </div>
-        <div class="line-tool-group line-tool-group-controls line-tool-group-fullscreen-only">
-          <span class="line-tool-label">Quality</span>
-          <select class="line-tool-select" data-line-quality-select="true">
-            <option value="auto">Auto</option>
-            <option value="overview">Overview</option>
-            <option value="exact">Exact Window</option>
-          </select>
-          <span class="line-tool-label">Window</span>
-          <select class="line-tool-select" data-line-window-select="true">
-            ${windowOptions
-              .map((size) => `<option value="${size}">${size.toLocaleString()}</option>`)
-              .join("")}
-          </select>
-          <span class="line-tool-label">Index</span>
-          <input
-            type="number"
-            class="line-tool-input"
-            data-line-jump-input="true"
-            min="0"
-            max="${maxIndex}"
-            step="1"
-            value="0"
-          />
-          <button type="button" class="line-tool-btn" data-line-jump-to-index="true">Go</button>
         </div>
         <div class="line-tool-group">
           <span class="line-zoom-label" data-line-zoom-label="true">100%</span>

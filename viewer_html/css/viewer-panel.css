@@ -869,18 +869,6 @@ body.line-panel-fullscreen-active {
     gap: var(--spacing-xs);
 }
 
-.line-tool-group-controls {
-    flex-wrap: wrap;
-}
-
-.line-tool-group-fullscreen-only {
-    display: none;
-}
-
-.line-chart-shell.is-fullscreen > .line-chart-toolbar .line-tool-group-fullscreen-only {
-    display: flex;
-}
-
 .line-tool-label {
     font-size: 0.68rem;
     font-weight: 700;

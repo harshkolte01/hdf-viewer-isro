@@ -6,7 +6,7 @@ Interactive runtime engines for matrix, line, and heatmap full views.
 - `common.js`: runtime cleanup sets and shared helper utilities.
 - `bindEvents.js`: delegated panel control handling and per-shell runtime initialization.
 - `matrixRuntime.js`: block-virtualized matrix scrolling, block queueing, and CSV export.
-- `lineRuntime.js`: zoom/pan/click-zoom chart runtime, compare overlays, quality/window controls, fullscreen, export.
+- `lineRuntime.js`: zoom/pan/click-zoom chart runtime, compare overlays, fullscreen, export.
 - `heatmapRuntime.js`: canvas heatmap runtime with zoom/pan, plot mode linked line chart, progressive loading, fullscreen, export.
 
 ## How it is implemented
