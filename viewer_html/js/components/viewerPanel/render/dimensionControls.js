@@ -1,4 +1,4 @@
-// Viewer HTML module: Renders dimension selectors and fixed-index controls for multidimensional dataset slicing.
+// Viewer HTML module: Renders dimension selectors and keeps optional fixed-index controls for multidimensional dataset slicing.
 (function (global) {
   "use strict";
   var ns = global.HDFViewer;
@@ -12,6 +12,7 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.render.dimensionControls");
+const SHOW_FIXED_INDEX_CONTROLS = false;
 function renderDimensionControls(state, preview) {
   const ndim = Number(preview?.ndim || 0);
   if (ndim < 2) {
@@ -100,6 +101,48 @@ function renderDimensionControls(state, preview) {
   const safeYDim = yOptions.some((option) => option.idx === stagedDims[1])
     ? stagedDims[1]
     : yOptions[0]?.idx;
+  const fixedIndexControls = SHOW_FIXED_INDEX_CONTROLS
+    ? `
+        <div class="dim-sliders">
+          ${shape
+            .map((size, dim) => {
+              if (stagedDims.includes(dim)) {
+                return "";
+              }
+
+              const max = Math.max(0, size - 1);
+              const current = Number.isFinite(stagedFixed[dim]) ? stagedFixed[dim] : Math.floor(size / 2);
+
+              return `
+                <div class="dim-slider">
+                  <label>Dim ${dim} index</label>
+                  <div class="slider-row">
+                    <input
+                      type="range"
+                      min="0"
+                      max="${max}"
+                      value="${current}"
+                      data-fixed-index-range="true"
+                      data-fixed-dim="${dim}"
+                      data-fixed-size="${size}"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="${max}"
+                      value="${current}"
+                      data-fixed-index-number="true"
+                      data-fixed-dim="${dim}"
+                      data-fixed-size="${size}"
+                    />
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      `
+    : "";
 
   return `
     <aside class="preview-sidebar">
@@ -152,44 +195,7 @@ function renderDimensionControls(state, preview) {
           </select>
         </div>
 
-        <div class="dim-sliders">
-          ${shape
-            .map((size, dim) => {
-              if (stagedDims.includes(dim)) {
-                return "";
-              }
-
-              const max = Math.max(0, size - 1);
-              const current = Number.isFinite(stagedFixed[dim]) ? stagedFixed[dim] : Math.floor(size / 2);
-
-              return `
-                <div class="dim-slider">
-                  <label>Dim ${dim} index</label>
-                  <div class="slider-row">
-                    <input
-                      type="range"
-                      min="0"
-                      max="${max}"
-                      value="${current}"
-                      data-fixed-index-range="true"
-                      data-fixed-dim="${dim}"
-                      data-fixed-size="${size}"
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="${max}"
-                      value="${current}"
-                      data-fixed-index-number="true"
-                      data-fixed-dim="${dim}"
-                      data-fixed-size="${size}"
-                    />
-                  </div>
-                </div>
-              `;
-            })
-            .join("")}
-        </div>
+        ${fixedIndexControls}
 
         <div class="dim-controls-buttons">
           <button type="button" class="dim-set-btn" data-dim-apply="true">Set</button>

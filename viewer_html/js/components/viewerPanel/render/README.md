@@ -4,7 +4,9 @@ Pure rendering layer for preview and full-view shell markup.
 
 ## What is implemented
 - `config.js`: derives runtime config and selection keys from state + preview context.
-- `dimensionControls.js`: renders dimension pickers, staged fixed-index sliders, and apply/reset controls.
+- `dimensionControls.js`: renders dimension pickers and apply/reset controls.
+  - Fixed-index slider markup is intentionally hidden for now via `SHOW_FIXED_INDEX_CONTROLS = false` in `dimensionControls.js`.
+  - If this UI needs to come back later, start with `dimensionControls.js`, then check `runtime/bindEvents.js` and `state/reducers/displayConfigActions.js`.
 - `previews.js`: generates table preview, SVG line preview, and sampled heatmap preview.
 - `sections.js`: renders inspect panel, display panel sections, toolbars, and full runtime shell containers.
 
