@@ -12,7 +12,11 @@
     return;
   }
   var moduleState = ensurePath(ns, "api.client");
+
+// Tracks currently running requests by cancel key; used to abort previous requests when a new one supersedes them
 const inFlightControllers = new Map();
+
+// Structured error thrown for all failed API calls — includes HTTP status, error code, and request context
 class ApiError extends Error {
   constructor({
     message,
@@ -34,6 +38,7 @@ class ApiError extends Error {
   }
 }
 
+// Serialises a params object into a URL query string (supports array values by appending multiple times)
 function toQueryString(params = {}) {
   const searchParams = new URLSearchParams();
 
@@ -58,11 +63,14 @@ function toQueryString(params = {}) {
   return query ? `?${query}` : "";
 }
 
+// Combines the base URL, endpoint path, and query params into a complete request URL
 function buildRequestUrl(endpoint, params = {}) {
   const normalizedEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   return `${API_BASE_URL}${normalizedEndpoint}${toQueryString(params)}`;
 }
 
+// Creates a new AbortController and mirrors abort events from an optional external signal.
+// If the external signal is already aborted the new controller aborts immediately.
 function createLinkedController(externalSignal) {
   const controller = new AbortController();
 
@@ -81,6 +89,7 @@ function createLinkedController(externalSignal) {
   return controller;
 }
 
+// Reads the response body as JSON or plain text based on Content-Type header
 async function parseResponsePayload(response) {
   const contentType = response.headers.get("content-type") || "";
   const isJson = contentType.includes("application/json");
@@ -100,6 +109,7 @@ async function parseResponsePayload(response) {
   }
 }
 
+// Extracts the most useful error message from the response payload and wraps it in ApiError
 function createErrorFromResponse({ response, payload, url, method }) {
   const messageFromPayload =
     payload && typeof payload === "object"
@@ -116,6 +126,8 @@ function createErrorFromResponse({ response, payload, url, method }) {
   });
 }
 
+// Registers a new in-flight controller for the given cancel key.
+// If cancelPrevious is true, the previous in-flight request for this key is aborted first.
 function registerInFlight(cancelKey, controller, cancelPrevious = false) {
   if (!cancelKey) {
     return;
@@ -129,6 +141,7 @@ function registerInFlight(cancelKey, controller, cancelPrevious = false) {
   inFlightControllers.set(cancelKey, controller);
 }
 
+// Removes the controller from the in-flight map once a request completes or errors
 function clearInFlight(cancelKey, controller) {
   if (!cancelKey) {
     return;
@@ -139,6 +152,8 @@ function clearInFlight(cancelKey, controller) {
     inFlightControllers.delete(cancelKey);
   }
 }
+
+// Aborts any currently in-flight request registered under cancelKey
 function cancelPendingRequest(cancelKey, reason = "cancelled") {
   const controller = inFlightControllers.get(cancelKey);
   if (!controller) {
@@ -149,6 +164,8 @@ function cancelPendingRequest(cancelKey, reason = "cancelled") {
   inFlightControllers.delete(cancelKey);
   return true;
 }
+
+// Returns a plain { controller, signal, cancel } object for callers that need to manage a request lifecycle externally
 function createRequestController() {
   const controller = new AbortController();
   return {
@@ -157,6 +174,9 @@ function createRequestController() {
     cancel: (reason = "cancelled") => controller.abort(reason),
   };
 }
+
+// Core fetch wrapper: builds URL, attaches cancel controller, executes fetch, parses response,
+// throws structured ApiError on failure, and normalises network/abort errors.
 async function apiRequest(endpoint, options = {}) {
   const {
     method = "GET",
@@ -171,6 +191,7 @@ async function apiRequest(endpoint, options = {}) {
   const url = buildRequestUrl(endpoint, params);
   const controller = createLinkedController(signal);
 
+  // Register this request in the in-flight map so it can be cancelled by key
   registerInFlight(cancelKey, controller, cancelPrevious);
 
   try {
@@ -188,6 +209,7 @@ async function apiRequest(endpoint, options = {}) {
 
     const payload = await parseResponsePayload(response);
 
+    // Throw structured error for any non-2xx HTTP status
     if (!response.ok) {
       throw createErrorFromResponse({ response, payload, url, method });
     }
@@ -198,6 +220,7 @@ async function apiRequest(endpoint, options = {}) {
       throw error;
     }
 
+    // Convert browser AbortError into a structured ApiError with isAbort=true so callers can distinguish it
     if (error?.name === "AbortError") {
       throw new ApiError({
         message: "Request aborted",
@@ -210,6 +233,7 @@ async function apiRequest(endpoint, options = {}) {
       });
     }
 
+    // Wrap unexpected network errors (e.g. no connection, DNS failure)
     throw new ApiError({
       message: error?.message || "Network error",
       status: 0,
@@ -219,9 +243,12 @@ async function apiRequest(endpoint, options = {}) {
       method,
     });
   } finally {
+    // Always remove from in-flight map once the request settles
     clearInFlight(cancelKey, controller);
   }
 }
+
+// Public API client: thin wrappers around apiRequest for GET and POST verbs
 const apiClient = {
   get(endpoint, params = {}, options = {}) {
     return apiRequest(endpoint, { ...options, method: "GET", params });

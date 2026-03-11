@@ -12,8 +12,11 @@
     return;
   }
   var moduleState = ensurePath(ns, "utils.export");
+
+// UTF-8 BOM ensures Excel opens the CSV with the correct encoding on Windows
 const CSV_BOM = "\uFEFF";
 
+// Strips path-unsafe characters from a filename segment to prevent directory traversal
 function sanitizeSegment(value, fallback = "dataset") {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -22,6 +25,7 @@ function sanitizeSegment(value, fallback = "dataset") {
   return raw.replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || fallback;
 }
 
+// Builds a compact timestamp string (YYYYMMdd-HHmmss) for export filenames
 function formatTimestamp(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -32,6 +36,8 @@ function formatTimestamp(date = new Date()) {
   return `${year}${month}${day}-${hours}${minutes}${seconds}`;
 }
 
+// OWASP CSV injection hardening: prefixes cells starting with =, +, -, @ with a single quote so
+// spreadsheet applications do not execute them as formulas
 function csvEscapeCell(value) {
   if (value === null || value === undefined) {
     return "";
@@ -47,10 +53,12 @@ function csvEscapeCell(value) {
   return text;
 }
 
+// Converts a row of values to a properly escaped CSV line
 function toCsvRow(values = []) {
   return values.map((entry) => csvEscapeCell(entry)).join(",");
 }
 
+// Builds a unique export filename from file key, path, display tab, scope, and a timestamp to avoid overwriting
 function buildExportFilename({ fileKey, path, tab, scope, extension }) {
   const filePart = sanitizeSegment(fileKey || "file", "file");
   const pathPart = sanitizeSegment(String(path || "/").replace(/^\/+/, "").replace(/\//g, "_"), "root");
@@ -60,6 +68,7 @@ function buildExportFilename({ fileKey, path, tab, scope, extension }) {
   return `${filePart}_${pathPart}_${tabPart}_${scopePart}_${formatTimestamp()}.${extPart}`;
 }
 
+// Wraps rows in a UTF-8 Blob with the proper MIME type for spreadsheet download
 function createCsvBlob(rows = [], includeBom = true) {
   const lines = Array.isArray(rows) ? rows : [];
   const body = lines.join("\r\n");
@@ -67,6 +76,7 @@ function createCsvBlob(rows = [], includeBom = true) {
   return new Blob([content], { type: "text/csv;charset=utf-8;" });
 }
 
+// Creates an invisible <a download> link, clicks it, and removes it — the canonical browser download trick
 function triggerBlobDownload(blob, filename) {
   if (!(blob instanceof Blob)) {
     throw new Error("Invalid export blob.");
@@ -79,6 +89,7 @@ function triggerBlobDownload(blob, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
+  // Revoke the object URL after a short delay to free browser memory
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 

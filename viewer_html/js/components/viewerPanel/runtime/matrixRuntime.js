@@ -12,8 +12,11 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.runtime.matrixRuntime");
+
+// Max concurrent block fetch requests to avoid flooding the backend on large table scrolls
 const MATRIX_MAX_PARALLEL_REQUESTS = 4;
 
+// Returns a cached block or null; block key encodes all offset/limit parameters
 function getCachedMatrixBlock(runtime, rowOffset, colOffset, rowLimit, colLimit) {
   const blockKey = buildMatrixBlockKey(
     runtime.selectionKey,
@@ -25,7 +28,9 @@ function getCachedMatrixBlock(runtime, rowOffset, colOffset, rowLimit, colLimit)
   return MATRIX_BLOCK_CACHE.get(blockKey) || null;
 }
 
+// Looks up the cached value for a single cell by computing its block and then indexing into block.data
 function getMatrixCellValue(runtime, row, col) {
+  // Compute the block-aligned top-left corner for this cell
   const rowOffset = Math.floor(row / runtime.blockRows) * runtime.blockRows;
   const colOffset = Math.floor(col / runtime.blockCols) * runtime.blockCols;
   const rowLimit = Math.min(runtime.blockRows, runtime.rows - rowOffset);
@@ -43,7 +48,9 @@ function getMatrixCellValue(runtime, row, col) {
   return block.data?.[localRow]?.[localCol] ?? null;
 }
 
+// Bootstraps a single matrix runtime from data-* attributes baked into the shell HTML at render time
 function initializeMatrixRuntime(shell) {
+  // Guard: skip if this shell has already been wired (prevents double-init on repeat renders)
   if (!shell || shell.dataset.matrixBound === "true") {
     return;
   }

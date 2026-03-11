@@ -1,4 +1,6 @@
 /* Viewer HTML styles: Viewer design tokens: core colors, spacing, radii, shadows, and typography defaults. */
+
+/* Design Tokens — Applied to all pages via :root */
 :root {
   /* Theme Colors */
   --bg-primary: #F8FAFF;

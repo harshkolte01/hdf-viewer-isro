@@ -29,6 +29,7 @@ const dataRequestsInFlight = new Map();
 
 const DEFAULT_LINE_OVERVIEW_MAX_POINTS = 5000;
 
+// Builds a deterministic string key from displayDims for use inside cache key strings
 function toDisplayDimsKey(displayDims) {
   if (!displayDims) {
     return "none";
@@ -41,6 +42,7 @@ function toDisplayDimsKey(displayDims) {
   return String(displayDims);
 }
 
+// Builds a deterministic string key from fixedIndices; sorts by dim index so key order is always the same
 function toFixedIndicesKey(fixedIndices) {
   if (typeof fixedIndices === "string") {
     return fixedIndices || "none";
@@ -56,6 +58,7 @@ function toFixedIndicesKey(fixedIndices) {
     .join(",") || "none";
 }
 
+// Returns (creating if needed) the per-file Map used to cache tree children for that file
 function getTreeCache(fileKey) {
   if (!frontendCache.treeChildren.has(fileKey)) {
     frontendCache.treeChildren.set(fileKey, new Map());
@@ -78,6 +81,7 @@ function getPreviewCacheKey(fileKey, path, params = {}) {
   ].join("|");
 }
 
+// Returns the cache key for a matrix block; includes offsets and step sizes so each scroll-window is cached separately
 function getMatrixBlockCacheKey(fileKey, path, params = {}) {
   return [
     fileKey,
@@ -94,6 +98,7 @@ function getMatrixBlockCacheKey(fileKey, path, params = {}) {
   ].join("|");
 }
 
+// Returns the cache key for a line data window; axis, quality, and offset are all part of the identity
 function getLineCacheKey(fileKey, path, params = {}) {
   return [
     fileKey,
@@ -110,6 +115,7 @@ function getLineCacheKey(fileKey, path, params = {}) {
   ].join("|");
 }
 
+// Returns the cache key for heatmap data; max_size controls downsampling so it must be included
 function getHeatmapCacheKey(fileKey, path, params = {}) {
   return [
     fileKey,
@@ -122,9 +128,12 @@ function getHeatmapCacheKey(fileKey, path, params = {}) {
   ].join("|");
 }
 
+// Returns the AbortController channel key used to cancel a previous request of the same type+file+path
 function getCancelChannel(type, fileKey, path) {
   return `${type}:${fileKey}:${path}`;
-}function clearFrontendCaches() {
+}
+// Resets all frontend caches; called after a backend refresh flush so stale data is not served
+function clearFrontendCaches() {
   frontendCache.files = null;
   frontendCache.treeChildren.clear();
   frontendCache.preview.clear();
@@ -134,10 +143,13 @@ function getCancelChannel(type, fileKey, path) {
   frontendCache.metadata.clear();
   previewRefreshInFlight.clear();
   dataRequestsInFlight.clear();
-}async function getFiles(options = {}) {
+}
+// Fetches the file listing; returns cached result unless force=true or cache is empty
+async function getFiles(options = {}) {
   const { force = false, signal } = options;
 
   if (!force && frontendCache.files) {
+    // Serve from memory cache, bypassing both backend and browser HTTP caching
     return {
       ...frontendCache.files,
       cached: true,
@@ -149,14 +161,18 @@ function getCancelChannel(type, fileKey, path) {
   const normalized = assertSuccess(normalizeFilesResponse(payload), "getFiles");
   frontendCache.files = normalized;
   return normalized;
-}async function refreshFiles(options = {}) {
+}
+// Triggers a backend cache refresh and then re-fetches the file list; clears all frontend caches first
+async function refreshFiles(options = {}) {
   const { signal } = options;
   const payload = await apiClient.post(API_ENDPOINTS.FILES_REFRESH, null, {}, { signal });
 
   clearFrontendCaches();
 
   return payload;
-}async function getFileChildren(key, path = "/", options = {}) {
+}
+// Fetches children for a path in the HDF5 tree; per-file and per-etag cache prevents redundant network round-trips
+async function getFileChildren(key, path = "/", options = {}) {
   const { force = false, signal, etag } = options;
   const treeCache = getTreeCache(key);
   const treeCacheKey = `${path}|${etag || "no-etag"}`;
@@ -187,7 +203,9 @@ function getCancelChannel(type, fileKey, path) {
   const normalized = assertSuccess(normalizeChildrenResponse(payload), "getFileChildren");
   treeCache.set(treeCacheKey, normalized);
   return normalized;
-}async function getFileMeta(key, path, options = {}) {
+}
+// Fetches HDF5 dataset/group metadata (attributes, dtype, shape) using an LRU cache keyed by file+path+etag
+async function getFileMeta(key, path, options = {}) {
   const { force = false, signal, etag } = options;
   const cacheKey = `${key}|${path}|${etag || "no-etag"}`;
 
@@ -220,7 +238,8 @@ function getCancelChannel(type, fileKey, path) {
   const normalized = assertSuccess(normalizeMetaResponse(payload), "getFileMeta");
   frontendCache.metadata.set(cacheKey, normalized);
   return normalized;
-}async function getFilePreview(key, path, params = {}, options = {}) {
+}
+async function getFilePreview(key, path, params = {}, options = {}) {
   const {
     force = false,
     signal,
@@ -441,7 +460,8 @@ async function getHeatmapData(key, path, params, options) {
     dataRequestsInFlight.set(cacheKey, requestPromise);
   }
   return requestPromise;
-}async function getFileData(key, path, params = {}, options = {}) {
+}
+async function getFileData(key, path, params = {}, options = {}) {
   const mode = String(params.mode || "").toLowerCase();
 
   if (mode === "matrix") {
@@ -457,7 +477,8 @@ async function getHeatmapData(key, path, params, options) {
   }
 
   throw new Error("Invalid mode. Expected one of: matrix, line, heatmap");
-}const __default_export__ = {
+}
+const __default_export__ = {
   getFiles,
   refreshFiles,
   getFileChildren,

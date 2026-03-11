@@ -1,4 +1,6 @@
 /* Viewer HTML styles: Viewer shell, sidebar, topbar, subbar, and responsive interaction layout styles. */
+
+/* Viewer Page Shell */
 .viewer-page {
   min-height: 100vh;
   min-height: 100dvh;
@@ -14,6 +16,7 @@
   overflow: hidden;
 }
 
+/* Sidebar Collapse — Desktop */
 /* Sidebar collapsed on desktop — hide column */
 .viewer-page.sidebar-collapsed {
   grid-template-columns: 0px 1fr;
@@ -22,6 +25,7 @@
   display: none;
 }
 
+/* Sidebar Panel */
 .viewer-sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
@@ -33,6 +37,7 @@
   overflow: hidden;
 }
 
+/* Sidebar Header Area */
 .sidebar-top {
   display: flex;
   flex-direction: column;
@@ -46,6 +51,7 @@
   gap: var(--spacing-sm);
 }
 
+/* Sidebar Toggle Buttons */
 .sidebar-close-btn {
   display: none;
   border: 1px solid var(--border);
@@ -79,11 +85,13 @@
   color: var(--primary);
 }
 
+/* Sidebar Backdrop */
 /* Sidebar backdrop (mobile only) */
 .sidebar-backdrop {
   display: none;
 }
 
+/* Sidebar Content Labels */
 .sidebar-title {
   font-size: 1.125rem;
   font-weight: 700;
@@ -102,6 +110,7 @@
   letter-spacing: 0.02em;
 }
 
+/* Sidebar Section */
 .sidebar-section {
   display: flex;
   flex-direction: column;
@@ -118,6 +127,7 @@
   font-weight: 700;
 }
 
+/* Tree Component */
 .tree-root,
 .tree-branch {
   list-style: none;
@@ -324,6 +334,7 @@
   cursor: pointer;
 }
 
+/* Main Content Area */
 .viewer-main {
   display: flex;
   flex-direction: column;
@@ -332,6 +343,7 @@
   overflow: hidden;
 }
 
+/* Topbar */
 .viewer-topbar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -345,6 +357,7 @@
   z-index: 5;
 }
 
+/* Topbar Layout */
 .topbar-left {
   display: flex;
   align-items: center;
@@ -359,6 +372,7 @@
   min-width: 0;
 }
 
+/* Breadcrumb */
 .breadcrumb-label {
   font-size: 0.7rem;
   text-transform: uppercase;
@@ -409,6 +423,7 @@
   gap: var(--spacing-md);
 }
 
+/* Ghost Button */
 .ghost-btn {
   display: inline-flex;
   align-items: center;
@@ -433,6 +448,7 @@
   color: var(--primary);
 }
 
+/* Segmented Control */
 .segmented {
   display: inline-flex;
   background: var(--surface-alt);
@@ -462,6 +478,7 @@
   color: var(--primary);
 }
 
+/* Sidebar Tree Scroll Container */
 .sidebar-tree {
   flex: 1;
   min-height: 0;
@@ -495,6 +512,7 @@
   white-space: nowrap;
 }
 
+/* Subbar */
 .viewer-subbar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -507,6 +525,7 @@
   z-index: 6;
 }
 
+/* Subbar Tabs */
 .subbar-tabs {
   display: flex;
   align-items: center;
@@ -547,6 +566,7 @@
   color: var(--primary);
 }
 
+/* Subbar Actions */
 .subbar-actions {
   display: flex;
   align-items: center;
@@ -555,6 +575,7 @@
   position: relative;
 }
 
+/* Notation Toggle */
 .notation-group {
   display: flex;
   align-items: center;
@@ -622,6 +643,7 @@
   cursor: not-allowed;
 }
 
+/* Aspect Ratio Toggle */
 .aspect-group {
   display: flex;
   align-items: center;
@@ -666,6 +688,7 @@
   cursor: not-allowed;
 }
 
+/* Export Button */
 .subbar-export {
   border: 1px solid var(--border);
   background: var(--surface-alt);

@@ -12,6 +12,8 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.sidebarTree");
+
+// Returns the cached children array for a path, or null if not yet loaded
 function getChildren(state, path) {
   if (!(state.childrenCache instanceof Map)) {
     return null;
@@ -57,6 +59,7 @@ function normalizeShape(shape) {
     .filter((entry) => Number.isFinite(entry) && entry >= 0);
 }
 
+// Checks whether a string dtype indicates a numeric type suitable for line chart plotting
 function isNumericDtype(dtype) {
   const normalized = String(dtype || "").trim().toLowerCase();
   if (!normalized || normalized.includes("complex")) {
@@ -70,6 +73,8 @@ function isNumericDtype(dtype) {
   );
 }
 
+// Searches all cached children arrays to find a dataset node matching the given path
+// Used when the preview object is not yet available to determine compare-add eligibility
 function lookupDatasetFromCache(state, targetPath) {
   const normalizedTargetPath = normalizePath(targetPath);
   if (!(state.childrenCache instanceof Map)) {

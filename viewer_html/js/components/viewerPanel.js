@@ -12,8 +12,12 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel");
+
+// Capture the render and bind functions that were registered by the lower-level viewerPanel/render and viewerPanel/runtime submodules
 var delegateRenderViewerPanel = global.renderViewerPanel;
 var delegateBindViewerPanelEvents = global.bindViewerPanelEvents;
+
+// Facade: validates and delegates to the real render implementation loaded from viewerPanel/render.js
 function renderViewerPanel(state) {
   if (typeof delegateRenderViewerPanel !== "function") {
     console.error("[HDFViewer] Missing renderViewerPanel for components/viewerPanel.");
@@ -22,6 +26,7 @@ function renderViewerPanel(state) {
   return delegateRenderViewerPanel(state);
 }
 
+// Facade: validates and delegates to the real event bind implementation loaded from viewerPanel/runtime modules
 function bindViewerPanelEvents(root, actions) {
   if (typeof delegateBindViewerPanelEvents !== "function") {
     console.error("[HDFViewer] Missing bindViewerPanelEvents for components/viewerPanel.");

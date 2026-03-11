@@ -12,6 +12,9 @@
     return;
   }
   var moduleState = ensurePath(ns, "utils.format");
+
+// Escapes HTML special characters to prevent XSS when inserting untrusted values into innerHTML.
+// Must be called for every data value injected into a template string (dataset names, attribute values, cell data).
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -20,6 +23,9 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 }
+
+// Converts a raw byte count into a human-readable string with the appropriate unit (B, KB, MB, GB, TB).
+// Used for displaying file sizes in the file list and metadata panel.
 function formatBytes(bytes) {
   const safeBytes = Number(bytes) || 0;
   if (safeBytes === 0) {
@@ -27,6 +33,7 @@ function formatBytes(bytes) {
   }
 
   const units = ["B", "KB", "MB", "GB", "TB"];
+  // Calculate which unit tier the byte count falls into
   const unitIndex = Math.floor(Math.log(safeBytes) / Math.log(1024));
   const normalizedIndex = Math.min(unitIndex, units.length - 1);
 

@@ -10,6 +10,10 @@ Documentation for the `viewer_html/` frontend.
 - `FILE_MAP.md` - file-by-file ownership map
 - `OPERATIONS_AND_RUNBOOK.md` - run/deploy/troubleshooting guide
 - `TESTING_AND_VALIDATION.md` - practical validation checklist
+- `TREE_STRUCTURE.md` - tree IDs, files, and `data-tree-*` hooks
+- `METADATA_PANEL.md` - metadata panel IDs, files, and load/render flow
+- `DISPLAY_PANEL.md` - display panel IDs, preview/full-data files, and display control hooks
+- `VIEW_SWITCHES_AND_BUTTONS.md` - shell-level switch buttons, breadcrumbs, sidebar, and fullscreen wiring
 
 ## Audience
 

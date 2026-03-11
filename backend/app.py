@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.url_map.strict_slashes = False
 
-# CORS configuration
+# CORS configuration — open wildcard for development; restrict origins in production
 CORS(
     app,
     resources={r"/*": {"origins": "*"}},
@@ -60,7 +60,8 @@ def health():
     ), 200
 
 
-# Register blueprints
+# Register blueprints — files_bp handles listing/refresh; hdf5_bp handles HDF5 navigation
+# Both are mounted under /files so the tree endpoints stay at /files/<key>/children etc.
 from src.routes.files import files_bp
 from src.routes.hdf5 import hdf5_bp
 

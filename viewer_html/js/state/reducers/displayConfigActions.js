@@ -76,9 +76,11 @@ function createDisplayConfigActions(deps) {
     resolveDisplayDimsFromConfig,
     getNextAvailableDim,
   } = unpackDeps(deps);
+  // Debounce delay prevents a new preview fetch on every keystroke in the dimension pickers
   const PREVIEW_RELOAD_DEBOUNCE_MS = 140;
   let previewReloadTimer = null;
 
+  // Clears any pending debounce timer and schedules a fresh preview reload after the quiet period
   function schedulePreviewReload(fallbackPath) {
     if (previewReloadTimer !== null) {
       clearTimeout(previewReloadTimer);

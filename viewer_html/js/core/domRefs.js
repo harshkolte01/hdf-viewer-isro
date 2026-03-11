@@ -16,6 +16,7 @@
 
   var moduleState = ensurePath(ns, "core.domRefs");
 
+  // Authoritative list of all element IDs that must exist in the HTML shell before the viewer boots
   var REQUIRED_IDS = [
     "viewer-app",
     "viewer-sidebar",
@@ -43,6 +44,7 @@
     "viewer-fullscreen-btn",
   ];
 
+  // Collects all required DOM nodes into a single object so callers never scatter getElementById calls throughout UI code
   function collect(doc) {
     var rootDoc = doc || document;
     return {
@@ -73,6 +75,7 @@
     };
   }
 
+  // Scans REQUIRED_IDS and returns { ok, missing[] }; called during boot to catch missing template IDs early
   function validate(doc) {
     var rootDoc = doc || document;
     var missing = [];
@@ -98,12 +101,14 @@
     };
   }
 
+  // Writes a status message onto an element and toggles its CSS tone class ("error" / "info" / neutral)
   function setStatus(element, message, tone) {
     if (!element) {
       return;
     }
 
     element.textContent = String(message || "");
+    // Clear both tone classes first to avoid stale state from a previous call
     element.classList.remove("error", "info");
     if (tone === "error") {
       element.classList.add("error");
@@ -112,6 +117,7 @@
     }
   }
 
+  // Sets element.hidden; preferred over toggling CSS display directly so layout calculations remain correct
   function setHidden(element, hidden) {
     if (!element) {
       return;
@@ -119,6 +125,7 @@
     element.hidden = !!hidden;
   }
 
+  // Writes raw HTML into an element; callers are responsible for using escapeHtml on any user-visible strings inside html
   function setHtml(element, html) {
     if (!element) {
       return;
@@ -126,6 +133,7 @@
     element.innerHTML = String(html || "");
   }
 
+  // Sets element.textContent; safe alternative to setHtml when the content is plain text
   function setText(element, text) {
     if (!element) {
       return;
@@ -133,6 +141,7 @@
     element.textContent = String(text || "");
   }
 
+  // Adds or removes a class based on a boolean flag; wraps classList.toggle for IE compatibility
   function toggleClass(element, className, enabled) {
     if (!element || !className) {
       return;

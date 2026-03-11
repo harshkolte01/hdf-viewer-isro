@@ -60,7 +60,8 @@ function unpackDeps(deps) {
     resolveDisplayDimsFromConfig,
     getNextAvailableDim,
   };
-}function createDataActions(deps) {
+}
+function createDataActions(deps) {
   const {
     getState,
     setState,
@@ -83,9 +84,9 @@ function unpackDeps(deps) {
   const PREVIEW_MAX_SIZE_FIRST = 160;
   const PREVIEW_MAX_SIZE_STEADY = 256;
   const PREVIEW_DETAIL = "fast";
-  // Request-key promise dedupe avoids duplicate network calls during quick UI churn.
+  // Request-key promise deduplication avoids duplicate network calls during quick UI churn
   const previewRequestPromises = new Map();
-  // Tracks selections that already received at least one preview response.
+  // Tracks selections that already received at least one preview response ("warmed" = second call may use larger max_size)
   const warmedPreviewSelections = new Set();
 
   function resolvePreviewMode(displayTab) {

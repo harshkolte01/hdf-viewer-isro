@@ -1,4 +1,6 @@
 /* Viewer HTML styles: Reusable file table component styles for listing rows, metadata, and action controls. */
+
+/* Table Container */
 .table-container {
   overflow-x: auto;
 }
@@ -8,6 +10,7 @@
   border-collapse: collapse;
 }
 
+/* Table Header */
 .files-table thead {
   background: var(--surface-alt);
 }
@@ -35,6 +38,7 @@
   text-align: center;
 }
 
+/* Table Body */
 .files-table tbody tr {
   border-bottom: 1px solid var(--border);
   transition: all 0.15s ease;
@@ -53,6 +57,7 @@
   font-size: 0.875rem;
 }
 
+/* Table Cells — Metadata Columns */
 .sr-no {
   text-align: center;
   color: var(--text-secondary);
@@ -85,6 +90,7 @@
   white-space: nowrap;
 }
 
+/* Action Cell & Open Button */
 .action-cell {
   text-align: center;
 }

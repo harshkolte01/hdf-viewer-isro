@@ -12,6 +12,8 @@
     return;
   }
   var moduleState = ensurePath(ns, "state.reducers.filesActions");
+
+// Destructures all dependencies from the shared deps bundle for use inside action functions
 function unpackDeps(deps) {
   const { actions, getState, setState, api, utils } = deps;
   const { getFiles, refreshFiles, getFileChildren, getFileMeta, getFilePreview } = api;
@@ -72,6 +74,7 @@ function createFileActions(deps) {
   } = unpackDeps(deps);
 
   return {
+  // Fetches the file list from the API (or frontend cache) and updates state.files
   async loadFiles() {
     setState({ loading: true, error: null });
 
@@ -95,6 +98,7 @@ function createFileActions(deps) {
     }
   },
 
+  // Triggers a backend cache refresh, clears frontend caches, then reloads the file list
   async refreshFileList() {
     setState({ refreshing: true, error: null });
 
@@ -110,6 +114,7 @@ function createFileActions(deps) {
     }
   },
 
+  // Sets route to "viewer", resets all per-session state to initial defaults, and starts loading the root tree node
   openViewer(fileSelection) {
     const selection =
       typeof fileSelection === "string"
@@ -155,6 +160,7 @@ function createFileActions(deps) {
     void actions.loadTreeChildren("/");
   },
 
+  // Resets route to "home", clears all viewer state, and marks viewerBlocked to prevent dataset rendering
   goHome() {
     setState({
       route: "home",

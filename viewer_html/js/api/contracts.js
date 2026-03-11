@@ -33,6 +33,7 @@
  * @property {string=} compression
  */
 
+// Coercion helpers: all accept an optional fallback so callers always get a safe typed value back
 function asObject(value, fallback = {}) {
   return value && typeof value === "object" ? value : fallback;
 }
@@ -53,6 +54,7 @@ function asNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+// Returns null for empty/missing values instead of a fallback string so callers can distinguish "no value"
 function asNullableString(value) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -60,14 +62,12 @@ function asNullableString(value) {
   return String(value);
 }
 
+// Converts a raw shape array from the server into a plain array of safe integers
 function normalizeShape(value) {
   return asArray(value).map((entry) => asNumber(entry, 0));
 }
 
-/**
- * @param {any} value
- * @returns {FileItem}
- */
+// Normalizes a single file/folder item from the /files response; detects folders by key suffix, type field, or is_folder flag
 function normalizeFileItem(value) {
   const raw = asObject(value);
   const key = asString(raw.key);
@@ -86,9 +86,11 @@ function normalizeFileItem(value) {
     is_folder: isFolder,
   };
 }
+// Normalizes the full /files list response including derived counts and success/error fields
 function normalizeFilesResponse(payload) {
   const raw = asObject(payload);
   const files = asArray(raw.files).map(normalizeFileItem);
+  // Derive counts from the normalized list in case the server omits them
   const filesCount = files.filter((entry) => entry.type === "file").length;
   const foldersCount = files.filter((entry) => entry.type === "folder").length;
 
@@ -104,10 +106,7 @@ function normalizeFilesResponse(payload) {
   };
 }
 
-/**
- * @param {any} value
- * @returns {TreeNode}
- */
+// Normalizes a single HDF5 tree node (group or dataset) from the children endpoint
 function normalizeTreeNode(value) {
   const raw = asObject(value);
   return {
@@ -122,6 +121,7 @@ function normalizeTreeNode(value) {
     compression: raw.compression === undefined ? undefined : asString(raw.compression),
   };
 }
+// Maps the /hdf5/children response into a typed object with a normalized children array
 function normalizeChildrenResponse(payload) {
   const raw = asObject(payload);
   return {
@@ -133,6 +133,7 @@ function normalizeChildrenResponse(payload) {
     error: raw.success === false ? asString(raw.error, "Unknown error") : null,
   };
 }
+// Normalizes the /hdf5/meta response; metadata is kept as a raw object because its keys are dataset-specific
 function normalizeMetaResponse(payload) {
   const raw = asObject(payload);
   return {
@@ -143,6 +144,7 @@ function normalizeMetaResponse(payload) {
     error: raw.success === false ? asString(raw.error, "Unknown error") : null,
   };
 }
+// Normalizes the /hdf5/preview response; includes shape, display_dims, stats, table/plot blobs, and profile data
 function normalizePreviewPayload(payload) {
   const raw = asObject(payload);
   return {
@@ -166,6 +168,7 @@ function normalizePreviewPayload(payload) {
   };
 }
 
+// Picks the mode-specific fields to include in the normalized data response (matrix/heatmap/line each have distinct fields)
 function normalizeDataByMode(raw) {
   const mode = asString(raw.mode);
 
@@ -222,6 +225,7 @@ function normalizeDataByMode(raw) {
     dtype: asString(raw.dtype),
   };
 }
+// Normalizes the /hdf5/data response; merges shared fields (key, path, source_shape) with mode-specific fields
 function normalizeDataPayload(payload) {
   const raw = asObject(payload);
   const dataByMode = normalizeDataByMode(raw);
@@ -238,6 +242,7 @@ function normalizeDataPayload(payload) {
     ...dataByMode,
   };
 }
+// Throws a named Error if payload.success is false; used after every normalizeXxx call to surface backend errors
 function assertSuccess(payload, operation) {
   if (!payload.success) {
     const message = payload.error || `${operation} failed`;

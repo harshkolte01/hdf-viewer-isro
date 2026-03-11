@@ -12,7 +12,10 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.runtime.lineRuntime");
+
+// How long in ms a fullscreen restore target stays alive after the view exits fullscreen mode
 const LINE_FULLSCREEN_RESTORE_TTL_MS = 1200;
+// Fixed stroke colors for compare overlay series (index 0 = primary, 1-4 = additional series)
 const LINE_COMPARE_COLORS = ["#DC2626", "#16A34A", "#D97706", "#0EA5E9", "#334155"];
 let lineFullscreenRestore = null;
 
@@ -29,6 +32,7 @@ function isNumericDtype(dtype) {
   );
 }
 
+// Parses a comma-separated shape string from a data-* attribute back into an integer array
 function parseShapeParam(value) {
   return String(value || "")
     .split(",")
@@ -36,6 +40,7 @@ function parseShapeParam(value) {
     .filter((entry) => Number.isFinite(entry) && entry >= 0);
 }
 
+// Decodes and validates the JSON-encoded compare items payload stored in a data-* attribute
 function parseCompareItemsPayload(rawValue, currentPath) {
   if (!rawValue) {
     return [];

@@ -12,23 +12,27 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.shared");
-const MATRIX_ROW_HEIGHT = 28;
-const MATRIX_COL_WIDTH = 96;
-const MATRIX_HEADER_HEIGHT = 28;
-const MATRIX_INDEX_WIDTH = 60;
-const MATRIX_OVERSCAN = 4;
-const MATRIX_BLOCK_CACHE = new LruCache(1600);
-const MATRIX_PENDING = new Set();
-const LINE_VIEW_CACHE = new LruCache(240);
-const LINE_FETCH_DEBOUNCE_MS = 220;
-const LINE_MIN_VIEW_SPAN = 64;
-const LINE_SVG_WIDTH = 980;
-const LINE_SVG_HEIGHT = 340;
-const LINE_DEFAULT_QUALITY = "auto";
-const LINE_DEFAULT_OVERVIEW_MAX_POINTS = 5000;
-const LINE_EXACT_MAX_POINTS = 20000;
-const LINE_WINDOW_OPTIONS = [256, 512, 1000, 2000, 5000, 10000, 20000];
-const LINE_KEYBOARD_PAN_RATIO = 0.25;
+
+// --- Matrix grid layout constants ---
+const MATRIX_ROW_HEIGHT = 28;        // px per data row in the virtual scroll grid
+const MATRIX_COL_WIDTH = 96;         // px per data column
+const MATRIX_HEADER_HEIGHT = 28;     // px for the sticky column-index header row
+const MATRIX_INDEX_WIDTH = 60;       // px for the sticky row-index column
+const MATRIX_OVERSCAN = 4;           // extra rows/cols rendered outside the viewport to reduce blank flashes during scroll
+const MATRIX_BLOCK_CACHE = new LruCache(1600); // LRU cache for fetched matrix blocks, keyed by offset+step
+const MATRIX_PENDING = new Set();   // tracks in-flight block fetch keys to avoid duplicate requests
+
+// --- Line chart constants ---
+const LINE_VIEW_CACHE = new LruCache(240);          // LRU cache for fetched line windows
+const LINE_FETCH_DEBOUNCE_MS = 220;                 // ms quiet period before firing a line window fetch on pan/zoom
+const LINE_MIN_VIEW_SPAN = 64;                      // minimum visible data points in the line view window
+const LINE_SVG_WIDTH = 980;                         // logical SVG coordinate space width
+const LINE_SVG_HEIGHT = 340;                        // logical SVG coordinate space height
+const LINE_DEFAULT_QUALITY = "auto";                // default quality mode for line fetch
+const LINE_DEFAULT_OVERVIEW_MAX_POINTS = 5000;      // overview fetch point budget
+const LINE_EXACT_MAX_POINTS = 20000;                // exact quality fetch point budget
+const LINE_WINDOW_OPTIONS = [256, 512, 1000, 2000, 5000, 10000, 20000]; // selectable window sizes in the toolbar
+const LINE_KEYBOARD_PAN_RATIO = 0.25;               // fraction of window to shift per keyboard arrow press
 
 function toSafeInteger(value, fallback = null) {
   const parsed = Number(value);
@@ -62,6 +66,7 @@ function getDefaultDisplayDims(shape) {
   return shape.length >= 2 ? [0, 1] : null;
 }
 
+// Normalizes a 2-element displayDims array for a given shape; ensures axes are in range and not equal
 function normalizeDisplayDims(displayDims, shape) {
   if (shape.length < 2) {
     return null;
@@ -91,7 +96,9 @@ function normalizeDisplayDims(displayDims, shape) {
   return dims;
 }
 
+// Normalizes fixedIndices by removing display axes, clamping to valid bounds, and setting defaults for hidden dims
 function normalizeFixedIndices(fixedIndices, shape, displayDims = []) {
+  // displayDims axes must not appear in fixedIndices - they are the slice plane axes
   const hidden = new Set(Array.isArray(displayDims) ? displayDims : []);
   const normalized = {};
 

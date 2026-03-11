@@ -21,6 +21,7 @@
     return window.innerWidth <= 1024;
   }
 
+  // Removes the current event listener registered on the panel root and resets module-level state
   function clearRuntimePanelBindings() {
     if (typeof disposeRuntimeEventBindings === "function") {
       try {
@@ -33,6 +34,7 @@
     runtimeEventRoot = null;
   }
 
+  // Single delegated click handler covering all panel interaction types (sidebar, axis, dim, matrix, line, compare, export, etc.)
   function bindRuntimeDelegatedEvents(root) {
     var onClick = function (event) {
       var target = event.target;

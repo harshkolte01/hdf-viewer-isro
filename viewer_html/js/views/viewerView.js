@@ -23,11 +23,14 @@
   }
 
   var REQUIRED_DOM_IDS = Array.isArray(domRefs.REQUIRED_IDS) ? domRefs.REQUIRED_IDS : [];
+  // Module-level state for the single delegated event listener on the shell root
   var disposeViewerViewBindings = null;
   var eventRoot = null;
   var eventActions = {};
+  // Guards against concurrent export button presses triggering duplicate downloads
   var exportRunning = false;
 
+  // Returns escapeHtml from utils/format.js for XSS-safe rendering; falls back to an inline implementation
   function resolveEscapeHtml() {
     if (typeof escapeHtml === "function") {
       return escapeHtml;
@@ -50,6 +53,7 @@
     return domRefs.validate(rootDoc || document);
   }
 
+  // Extracts innerHTML from the first child of an HTML string; used to strip wrappers added by component render functions
   function stripSingleRoot(html) {
     var markup = typeof html === "string" ? html.trim() : "";
     if (!markup) {
@@ -67,6 +71,7 @@
     return firstElement.innerHTML;
   }
 
+  // Removes the current event delegation listener and cleans up sidebar and panel runtime bindings
   function clearViewerViewBindings() {
     if (typeof disposeViewerViewBindings === "function") {
       try {
@@ -89,6 +94,7 @@
     }
   }
 
+  // Async init hook called during boot; currently a no-op, reserved for future template pre-hydration logic
   async function initViewerViewTemplate() {
     return Promise.resolve();
   }

@@ -22,29 +22,31 @@
   }
 const actions = {};
 
-const deps = {
-  actions,
-  getState,
-  setState,
-  api: {
-    getFiles,
-    refreshFiles,
-    getFileChildren,
-    getFileMeta,
-    getFilePreview,
-  },
-  utils,
-};
+  // deps bundles the shared store primitives, API methods, and utils so action factories receive them via injection
+  const deps = {
+    actions,
+    getState,
+    setState,
+    api: {
+      getFiles,
+      refreshFiles,
+      getFileChildren,
+      getFileMeta,
+      getFilePreview,
+    },
+    utils,
+  };
 
-Object.assign(
-  actions,
-  createFileActions(deps),
-  createTreeActions(deps),
-  createViewActions(deps),
-  createDisplayConfigActions(deps),
-  createDataActions(deps),
-  createCompareActions(deps)
-);
+  // Merge all action factory outputs into a single `actions` object so callers use one consistent API surface
+  Object.assign(
+    actions,
+    createFileActions(deps),
+    createTreeActions(deps),
+    createViewActions(deps),
+    createDisplayConfigActions(deps),
+    createDataActions(deps),
+    createCompareActions(deps)
+  );
   if (typeof actions !== "undefined") {
     moduleState.actions = actions;
     global.actions = actions;

@@ -12,6 +12,8 @@
     return;
   }
   var moduleState = ensurePath(ns, "state.reducers.treeActions");
+
+// Destructures all needed dependencies from the shared deps bundle
 function unpackDeps(deps) {
   const { actions, getState, setState, api, utils } = deps;
   const { getFiles, refreshFiles, getFileChildren, getFileMeta, getFilePreview } = api;
@@ -60,7 +62,8 @@ function unpackDeps(deps) {
     resolveDisplayDimsFromConfig,
     getNextAvailableDim,
   };
-}function createTreeActions(deps) {
+}
+function createTreeActions(deps) {
   const {
     actions,
     getState,
@@ -73,6 +76,7 @@ function unpackDeps(deps) {
   } = unpackDeps(deps);
 
   return {
+  // Handles navigation via the breadcrumb bar: expands ancestor paths, clears preview state, and loads children
   onBreadcrumbSelect(path) {
     const normalizedPath = normalizePath(path);
     const requiredAncestors = getAncestorPaths(normalizedPath);
@@ -126,6 +130,7 @@ function unpackDeps(deps) {
     }
   },
 
+  // Lazily loads children for a tree path; uses the childrenCache Map to avoid refetching on re-expand
   async loadTreeChildren(path, options = {}) {
     const normalizedPath = normalizePath(path);
     const { force = false } = options;

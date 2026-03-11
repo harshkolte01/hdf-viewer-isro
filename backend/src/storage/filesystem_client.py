@@ -16,6 +16,10 @@ class FilesystemStorageClient:
         logger.info("Filesystem storage initialized with root: %s", self.storage_root)
 
     def _resolve_storage_root(self) -> Path:
+        # Read storage root from environment. Priority order:
+        # 1. STORAGE_ROOT (explicit, platform-agnostic)
+        # 2. STORAGE_PATH_WINDOWS / STORAGE_PATH_LINUX (platform-specific fallbacks)
+        # On Windows STORAGE_PATH_WINDOWS is tried first; on Linux the reverse.
         explicit_root = os.getenv("STORAGE_ROOT")
         linux_root = os.getenv("STORAGE_PATH_LINUX")
         windows_root = os.getenv("STORAGE_PATH_WINDOWS")
@@ -40,6 +44,8 @@ class FilesystemStorageClient:
         )
 
     def _normalize_prefix(self, prefix: str) -> str:
+        # Normalise and validate the prefix query param. Backslashes are converted
+        # to forward slashes; '..' components are rejected to prevent directory traversal.
         normalized = str(prefix or "").strip().replace("\\", "/").lstrip("/")
         parts = [part for part in normalized.split("/") if part and part != "."]
         if any(part == ".." for part in parts):
@@ -47,6 +53,7 @@ class FilesystemStorageClient:
         return "/".join(parts)
 
     def _normalize_object_key(self, key: str) -> str:
+        # Same traversal defence as _normalize_prefix but applied to file object keys.
         normalized = str(key or "").strip().replace("\\", "/").lstrip("/")
         parts = [part for part in normalized.split("/") if part and part != "."]
         if any(part == ".." for part in parts):
@@ -54,12 +61,17 @@ class FilesystemStorageClient:
         return "/".join(parts)
 
     def _ensure_within_root(self, root: Path, path: Path) -> None:
+        # Security guard: raises if the resolved path escapes the storage root.
+        # This prevents directory traversal attacks via crafted file keys.
         try:
             path.relative_to(root)
         except ValueError as exc:
             raise ValueError("Path escapes configured storage root") from exc
 
     def _derive_parent_folders(self, key: str, normalized_prefix: str) -> Set[str]:
+        # Build synthetic folder entries from a file key's path components.
+        # The folder rows are not real filesystem entries; they let the UI render
+        # a tree without a separate "list directories" API call.
         folders: Set[str] = set()
         parts = [part for part in str(key).split("/") if part]
         if len(parts) <= 1:
@@ -75,6 +87,8 @@ class FilesystemStorageClient:
         return folders
 
     def _build_etag(self, stat_result: os.stat_result) -> str:
+        # Create a lightweight etag fingerprint from mtime_ns and file size.
+        # Using nanosecond precision mtime avoids false cache hits on fast writes.
         return f"{int(stat_result.st_mtime_ns):x}-{int(stat_result.st_size):x}"
 
     def resolve_object_path(self, key: str) -> Path:
@@ -138,10 +152,13 @@ class FilesystemStorageClient:
                 )
 
                 if include_folders:
-                    # UI expects folder rows even though filesystem traversal yields files.
+                    # Synthesise virtual folder rows so the UI can show a directory
+                    # tree without a separate API for listing subdirectories.
                     folders.update(self._derive_parent_folders(relative, normalized_prefix))
 
                 if normalized_max_items is not None and len(objects) >= normalized_max_items:
+                    # Set the early-abort flag and break out of both the inner
+                    # (files) and outer (directory walk) loops immediately.
                     reached_limit = True
                     break
 
@@ -198,6 +215,8 @@ _storage_client: Optional[FilesystemStorageClient] = None
 
 
 def get_storage_client() -> FilesystemStorageClient:
+    # Singleton accessor — the storage client is expensive to construct (resolves
+    # environment variables and validates the root path) so we reuse one instance.
     global _storage_client
     if _storage_client is None:
         _storage_client = FilesystemStorageClient()

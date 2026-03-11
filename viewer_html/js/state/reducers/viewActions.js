@@ -72,15 +72,18 @@ function createViewActions(deps) {
   } = unpackDeps(deps);
 
   return {
+  // Flips sidebar open/closed; used by the toggle button in the topbar
   toggleSidebar() {
     const current = getState();
     setState({ sidebarOpen: !current.sidebarOpen });
   },
 
+  // Explicitly sets sidebar open state; called by the responsive breakpoint listener in app-viewer.js
   setSidebarOpen(open) {
     setState({ sidebarOpen: !!open });
   },
 
+  // Switches between "inspect" and "display" modes; entering display kicks off a preview load for the selected dataset
   setViewMode(viewMode) {
     const mode = viewMode === "display" ? "display" : "inspect";
     setState({

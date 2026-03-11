@@ -19,23 +19,25 @@ logger = logging.getLogger(__name__)
 
 hdf5_bp = Blueprint('hdf5', __name__)
 
-MAX_ELEMENTS = 1_000_000
-MAX_JSON_ELEMENTS = 500_000
-MAX_MATRIX_ROWS = 2000
-MAX_MATRIX_COLS = 2000
-MAX_LINE_POINTS = 5000
-MAX_LINE_EXACT_POINTS = 20000
+# Per-request limits that gate data reads before any HDF5 file is opened.
+# Kept conservative to protect JSON serialisation speed and response body size.
+MAX_ELEMENTS = 1_000_000         # absolute element cap across all modes
+MAX_JSON_ELEMENTS = 500_000      # JSON-safe element cap (dict/list overhead)
+MAX_MATRIX_ROWS = 2000           # max rows per matrix viewport request
+MAX_MATRIX_COLS = 2000           # max cols per matrix viewport request
+MAX_LINE_POINTS = 5000           # max points for line overview/auto quality
+MAX_LINE_EXACT_POINTS = 20000    # max points allowed when quality=exact
 DEFAULT_LINE_QUALITY = 'auto'
 DEFAULT_PREVIEW_DETAIL = 'full'
-MAX_HEATMAP_SIZE = 1024
+MAX_HEATMAP_SIZE = 1024          # max side-length for heatmap downsample
 DEFAULT_ROW_LIMIT = 100
 DEFAULT_COL_LIMIT = 100
-DEFAULT_MAX_SIZE = 512
-MAX_EXPORT_CSV_CELLS = 10_000_000
-MAX_EXPORT_LINE_POINTS = 5_000_000
-DEFAULT_EXPORT_MATRIX_CHUNK_ROWS = 256
-DEFAULT_EXPORT_MATRIX_CHUNK_COLS = 256
-DEFAULT_EXPORT_LINE_CHUNK_POINTS = 50_000
+DEFAULT_MAX_SIZE = 512           # default heatmap side-length if not specified
+MAX_EXPORT_CSV_CELLS = 10_000_000         # hard cap for matrix/heatmap CSV export
+MAX_EXPORT_LINE_POINTS = 5_000_000        # hard cap for line CSV export
+DEFAULT_EXPORT_MATRIX_CHUNK_ROWS = 256   # rows read per HDF5 read pass during export
+DEFAULT_EXPORT_MATRIX_CHUNK_COLS = 256   # cols read per HDF5 read pass during export
+DEFAULT_EXPORT_LINE_CHUNK_POINTS = 50_000  # points buffered per pass during line export
 
 
 def _parse_int_param(name, default=None, min_value=None):
@@ -52,9 +54,12 @@ def _parse_int_param(name, default=None, min_value=None):
 
 
 def _parse_display_dims(param, ndim):
+    # display_dims selects which two axes to display as rows/columns.
+    # Format: "dim0,dim1" — e.g. "0,1" or "-2,-1" for last two dims.
     if ndim < 2:
         return None
     if not param:
+        # Default to the last two dimensions which is the most natural choice.
         return (ndim - 2, ndim - 1)
     parts = [part.strip() for part in param.split(',') if part.strip()]
     if len(parts) != 2:
@@ -76,6 +81,8 @@ def _parse_display_dims(param, ndim):
 
 
 def _parse_fixed_indices(param, ndim):
+    # fixed_indices pins non-display dimensions to a specific slice index.
+    # Format: "dim=idx,dim=idx" or "dim:idx,dim:idx" (both separators supported).
     indices = {}
     if not param:
         return indices
@@ -101,6 +108,8 @@ def _parse_fixed_indices(param, ndim):
 
 
 def _fill_fixed_indices(fixed_indices, shape, display_dims):
+    # Ensure every non-display dimension has a fixed slice index before we
+    # build the HDF5 indexer. Defaults to the midpoint for stable previews.
     for dim in range(len(shape)):
         if display_dims and dim in display_dims:
             continue
@@ -203,6 +212,9 @@ def _normalize_selection(shape, display_dims_param, fixed_indices_param):
 
 
 def _compute_safe_heatmap_size(rows, cols, requested_size):
+    # Binary-search the largest heatmap side size whose projected cell count still
+    # fits within the JSON element cap. This avoids hard errors for near-limit inputs
+    # by gracefully reducing resolution instead of rejecting the request.
     if requested_size <= 0:
         return 1
 
@@ -242,6 +254,9 @@ def _enforce_element_limits(count):
 
 
 def _csv_escape(value):
+    # OWASP CSV injection hardening: values that start with formula characters
+    # (=, +, -, @) are prefixed with a single quote so spreadsheet apps treat
+    # them as text rather than executing them as formulas.
     if value is None:
         text = ""
     else:
@@ -259,6 +274,8 @@ def _csv_row(values):
 
 
 def _sanitize_filename_segment(value, fallback):
+    # Build a filesystem-safe filename segment by keeping only alphanumeric
+    # characters, hyphens, underscores, and dots; replace everything else with _.
     text = str(value or "").strip()
     if not text:
         return fallback
@@ -275,6 +292,8 @@ def _build_export_filename(key, path, mode):
 
 
 def _is_numeric_dtype_string(dtype_value):
+    # Determine whether a dtype string represents exportable numeric data.
+    # Complex dtypes are excluded because they require special serialisation.
     text = str(dtype_value or "").strip().lower()
     if not text:
         return False
@@ -289,6 +308,8 @@ def _is_numeric_dtype_string(dtype_value):
 
 
 def _parse_compare_paths(param, base_path):
+    # Parse a comma-separated list of HDF5 paths for multi-series line exports.
+    # Deduplicates entries and removes the base path to avoid double-counting.
     if not param:
         return []
     base = str(base_path or "").strip()
@@ -355,7 +376,8 @@ def get_children(key):
         # Get query parameters
         hdf_path = request.args.get('path', '/')
         
-        # Get file etag for cache invalidation
+        # Derive the file's etag from its mtime + size so cache entries
+        # are automatically invalidated whenever the file changes on disk.
         storage = get_storage_client()
         metadata = storage.get_object_metadata(key)
         etag = metadata['etag']
@@ -641,6 +663,9 @@ def get_data(key):
             'max_points',
             'etag',
         }
+        # Build a deterministic cache key from the sorted query string so that
+        # the same logical request always maps to the same cache entry regardless
+        # of the order query parameters arrive in.
         excluded_query_keys = {
             key_name for key_name in request.args.keys() if key_name not in supported_query_keys
         }
@@ -662,6 +687,8 @@ def get_data(key):
             )
             return jsonify(response), 200
 
+        # Resolve dataset shape/ndim without reading any data arrays —
+        # this lightweight call is also cached to avoid redundant HDF5 opens.
         reader = get_hdf5_reader()
         dataset_info = _get_cached_dataset_info(reader, key, hdf_path, cache_version)
         shape = dataset_info['shape']
@@ -679,6 +706,8 @@ def get_data(key):
                 'error': 'Mode requires a 2D or higher dataset'
             }), 400
 
+        # Dispatch to the appropriate reader method based on the requested mode.
+        # Each branch validates its own parameters before calling the reader.
         response_payload = None
 
         if mode == 'matrix':
@@ -692,6 +721,7 @@ def get_data(key):
             row_dim, col_dim = display_dims
             rows = shape[row_dim]
             cols = shape[col_dim]
+            # Clamp limits to what actually exists beyond the given offsets.
             row_limit = min(row_limit, max(0, rows - row_offset))
             col_limit = min(col_limit, max(0, cols - col_offset))
 
@@ -852,6 +882,8 @@ def get_data(key):
 
             line_step = 1
             if quality_applied == 'overview' and requested_points > 0:
+                # Compute a whole-number stride so the downsampled output has at
+                # most max_points points while covering the entire requested window.
                 line_step = max(1, int(math.ceil(requested_points / max_points)))
 
             output_points = int(math.ceil(requested_points / line_step)) if requested_points > 0 else 0
@@ -1019,46 +1051,46 @@ def export_csv(key):
                 col_limit
             )
 
-            def generate_matrix_csv():
-                yield "\ufeff"
-                header = ["row\\col"] + list(range(col_offset, col_offset + col_limit))
-                yield _csv_row(header)
+        def generate_matrix_csv():
+            yield "\ufeff"  # UTF-8 BOM so Excel opens the file without the encoding dialog
+            header = ["row\\col"] + list(range(col_offset, col_offset + col_limit))
+            yield _csv_row(header)
 
-                row_end = row_offset + row_limit
-                col_end = col_offset + col_limit
+            row_end = row_offset + row_limit
+            col_end = col_offset + col_limit
 
-                for row_cursor in range(row_offset, row_end, chunk_rows):
-                    current_rows = min(chunk_rows, row_end - row_cursor)
-                    row_buffers = [[row_cursor + row_index] for row_index in range(current_rows)]
+            for row_cursor in range(row_offset, row_end, chunk_rows):
+                current_rows = min(chunk_rows, row_end - row_cursor)
+                row_buffers = [[row_cursor + row_index] for row_index in range(current_rows)]
 
-                    # Read chunked blocks to keep memory bounded for large exports.
-                    for col_cursor in range(col_offset, col_end, chunk_cols):
-                        current_cols = min(chunk_cols, col_end - col_cursor)
-                        block = reader.get_matrix(
-                            key,
-                            hdf_path,
-                            display_dims,
-                            fixed_indices,
-                            row_cursor,
-                            current_rows,
-                            col_cursor,
-                            current_cols,
-                            row_step=1,
-                            col_step=1
-                        )
-                        block_data = block.get('data')
-                        safe_block_rows = block_data if isinstance(block_data, list) else []
+                # Read chunked blocks to keep memory bounded for large exports.
+                for col_cursor in range(col_offset, col_end, chunk_cols):
+                    current_cols = min(chunk_cols, col_end - col_cursor)
+                    block = reader.get_matrix(
+                        key,
+                        hdf_path,
+                        display_dims,
+                        fixed_indices,
+                        row_cursor,
+                        current_rows,
+                        col_cursor,
+                        current_cols,
+                        row_step=1,
+                        col_step=1
+                    )
+                    block_data = block.get('data')
+                    safe_block_rows = block_data if isinstance(block_data, list) else []
 
-                        for row_index in range(current_rows):
-                            safe_row = safe_block_rows[row_index] if row_index < len(safe_block_rows) and isinstance(
-                                safe_block_rows[row_index], list
-                            ) else []
-                            for col_index in range(current_cols):
-                                value = safe_row[col_index] if col_index < len(safe_row) else ""
-                                row_buffers[row_index].append(value)
+                    for row_index in range(current_rows):
+                        safe_row = safe_block_rows[row_index] if row_index < len(safe_block_rows) and isinstance(
+                            safe_block_rows[row_index], list
+                        ) else []
+                        for col_index in range(current_cols):
+                            value = safe_row[col_index] if col_index < len(safe_row) else ""
+                            row_buffers[row_index].append(value)
 
-                    for row_values in row_buffers:
-                        yield _csv_row(row_values)
+                for row_values in row_buffers:
+                    yield _csv_row(row_values)
 
             elapsed_ms = (time.perf_counter() - request_started) * 1000
             logger.info(
@@ -1143,7 +1175,7 @@ def export_csv(key):
             })
 
         def generate_line_csv():
-            yield "\ufeff"
+            yield "\ufeff"  # UTF-8 BOM for Excel compatibility
             header = ["index", "base"] + [target['label'] for target in compare_targets]
             yield _csv_row(header)
 

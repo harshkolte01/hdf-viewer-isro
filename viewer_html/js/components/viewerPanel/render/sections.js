@@ -12,6 +12,8 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.render.sections");
+
+// Renders the correct SVG icon for a toolbar button based on its kind string
 function renderToolIcon(kind) {
   if (kind === "pan") {
     return `

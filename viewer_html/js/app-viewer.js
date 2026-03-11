@@ -16,8 +16,10 @@
 
   var moduleState = ensurePath(ns, "app.viewerBoot");
   var root = document.getElementById("viewer-app");
+  // renderQueued prevents multiple requestAnimationFrame calls stacking up before a render fires
   var renderQueued = false;
 
+  // Displays a fatal error message in the global status bar when boot fails
   function setBootFailureStatus(message) {
     var statusNode = document.getElementById("global-status");
     if (!statusNode) {
@@ -29,6 +31,7 @@
     statusNode.classList.add("error");
   }
 
+  // Resolves the actions object from either the local `actions` variable or the namespace
   function resolveActions() {
     if (typeof actions !== "undefined" && actions && typeof actions === "object") {
       return actions;
@@ -39,6 +42,7 @@
     return {};
   }
 
+  // Checks that all required global functions AND namespace modules are present before boot proceeds
   function verifyRuntimeDependencies() {
     var missingGlobals = [];
 
@@ -56,6 +60,7 @@
     }
 
     var missingModules = [];
+    // This list must match every module that registers itself via ns.core.registerModule
     var requiredModules = [
       "core/namespace",
       "core/config",
@@ -102,6 +107,7 @@
     };
   }
 
+  // Schedules a render on the next animation frame; skips if one is already queued
   function queueRender() {
     if (renderQueued) {
       return;
@@ -121,6 +127,7 @@
     });
   }
 
+  // Calls renderViewerView with the current state, then re-binds events on the updated DOM
   function renderApp() {
     if (!root) {
       return;
@@ -138,18 +145,21 @@
       deepLinkExample: "?file=<url-encoded-object-key>",
     });
 
+    // Rebind events after innerHTML updates so interaction still works on fresh DOM nodes
     if (typeof bindViewerViewEvents === "function") {
       bindViewerViewEvents(root, resolveActions());
     }
   }
 
   async function bootstrapApp() {
+    // Step 1: verify all modules and globals are available
     var deps = verifyRuntimeDependencies();
     if (!deps.ok) {
       setBootFailureStatus("Viewer bootstrap failed: missing runtime dependencies.");
       return;
     }
 
+    // Step 2: verify all required DOM IDs are present in the HTML shell
     if (typeof validateViewerDomIds === "function") {
       var validation = validateViewerDomIds(document);
       if (!validation.ok) {
@@ -162,15 +172,19 @@
       }
     }
 
+    // Step 3: run any async template init hooks (currently a no-op, reserved for future use)
     if (typeof initViewerViewTemplate === "function") {
       await Promise.allSettled([initViewerViewTemplate()]);
     }
 
+    // Step 4: subscribe the render loop to state changes
     if (typeof subscribe === "function") {
       subscribe(queueRender);
     }
 
     var actionsApi = resolveActions();
+
+    // Step 5: set up responsive sidebar collapse on narrow viewports (tablet/mobile)
     var mql = window.matchMedia("(max-width: 1024px)");
 
     function handleViewportChange(e) {
@@ -185,15 +199,18 @@
       mql.addListener(handleViewportChange);
     }
 
+    // Collapse sidebar immediately if we are already on a narrow viewport
     if (mql.matches && typeof actionsApi.setSidebarOpen === "function") {
       actionsApi.setSidebarOpen(false);
     }
 
+    // Step 6: parse ?file= query parameter for deep-link file opening
     var params = new URLSearchParams(location.search);
     var deepLinkKey = params.get("file");
     var hasFile = Boolean(deepLinkKey);
 
     if (hasFile && typeof actionsApi.openViewer === "function") {
+      // Remove ?file= from the browser URL bar to keep it clean after boot
       history.replaceState({}, "", location.pathname);
       actionsApi.openViewer({
         key: deepLinkKey,

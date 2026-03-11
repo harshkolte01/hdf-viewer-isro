@@ -12,6 +12,9 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.render.config");
+
+// Builds a unique string key for a line selection (file + path + displayDims + fixedIndices + lineIndex)
+// Used to determine whether the runtime needs to refetch data after a state change
 function buildLineSelectionKey(fileKey, path, displayDimsParam, fixedIndicesParam, lineIndex) {
   return [
     fileKey || "no-file",
@@ -22,6 +25,7 @@ function buildLineSelectionKey(fileKey, path, displayDimsParam, fixedIndicesPara
   ].join("|");
 }
 
+// Resolves the full line runtime config from state and preview; returns supported=false if dataset is not plottable
 function resolveLineRuntimeConfig(state, preview) {
   const controls = resolveDisplayControls(state, preview);
   const shape = controls.shape;

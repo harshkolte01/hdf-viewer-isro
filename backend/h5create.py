@@ -2,6 +2,9 @@ import h5py
 import numpy as np
 import math
 
+# Utility script that generates synthetic HDF5 test files for local development.
+# Each file contains three datasets (2-D, 3-D, 4-D) totalling ~100 MiB of random
+# uint8 data so the viewer can be exercised with realistic-sized inputs.
 
 TARGET_SIZE_MB = 100
 TARGET_BYTES = TARGET_SIZE_MB * 1024 * 1024  # 100 MiB
@@ -46,7 +49,8 @@ def make_data(shape, dtype=np.uint8):
 
 
 def create_hdf5_file(filename):
-    # Split total size across 2D, 3D, and 4D datasets
+    # Divide total byte budget roughly equally across three datasets of different
+    # dimensionality so test files exercise 2-D, 3-D, and 4-D viewer code paths.
     n2 = TARGET_BYTES // 3
     n3 = TARGET_BYTES // 3
     n4 = TARGET_BYTES - n2 - n3  # remaining bytes

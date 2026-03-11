@@ -71,6 +71,8 @@ class SimpleCache:
         
         with self._lock:
             if key in self._cache:
+                # Move existing entry to the end so it gets a fresh TTL without
+                # disturbing the LRU insertion-order eviction logic below.
                 self._cache.move_to_end(key)
             self._cache[key] = {
                 'value': value,
@@ -106,6 +108,8 @@ class SimpleCache:
         Args:
             pattern: String pattern to match (simple substring match)
         """
+        # Simple substring match — sufficient for the key naming scheme used here
+        # (e.g. clearing all entries for a specific file by matching its key prefix).
         with self._lock:
             keys_to_delete = [k for k in self._cache.keys() if pattern in k]
             for key in keys_to_delete:
@@ -127,11 +131,13 @@ class SimpleCache:
             }
 
 
-# Global cache instances
-_files_cache = SimpleCache(default_ttl=30, max_entries=200)  # 30 seconds for file list
-_hdf5_cache = SimpleCache(default_ttl=300, max_entries=3000)  # 5 minutes for HDF5 metadata
-_dataset_cache = SimpleCache(default_ttl=300, max_entries=3000)  # 5 minutes for dataset info
-_data_cache = SimpleCache(default_ttl=120, max_entries=1200)  # 2 minutes for /data windows
+# Global cache singletons — one per data type with tuned TTL and capacity.
+# Shorter TTL for the file list so newly added files appear quickly.
+# Longer TTL for HDF5 metadata and data windows that are expensive to recompute.
+_files_cache = SimpleCache(default_ttl=30, max_entries=200)    # 30 s  — file listing
+_hdf5_cache = SimpleCache(default_ttl=300, max_entries=3000)   # 5 min — HDF5 tree/meta
+_dataset_cache = SimpleCache(default_ttl=300, max_entries=3000) # 5 min — dataset info
+_data_cache = SimpleCache(default_ttl=120, max_entries=1200)   # 2 min — /data windows
 
 
 def get_files_cache() -> SimpleCache:

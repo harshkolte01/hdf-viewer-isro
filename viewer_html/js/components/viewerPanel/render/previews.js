@@ -12,12 +12,16 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.render.previews");
+
+// Renders a scrollable HTML table preview from the preview.table payload
+// 1-D datasets use a single Index | Value column; 2-D datasets use a multi-column row grid
 function renderTablePreview(preview, notation = "auto") {
   const table = preview?.table;
   if (!table || typeof table !== "object") {
     return '<div class="panel-state"><div class="state-text">Table preview not available.</div></div>';
   }
 
+  // Attempt to source 1-D values from multiple possible payload locations
   const oneDValuesFromPlot = Array.isArray(preview?.plot?.y)
     ? preview.plot.y
     : Array.isArray(preview?.profile?.y)

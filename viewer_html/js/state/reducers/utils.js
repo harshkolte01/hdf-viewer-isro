@@ -12,6 +12,8 @@
     return;
   }
   var moduleState = ensurePath(ns, "state.reducers.utils");
+
+// Normalizes an HDF5 path string to always start with / and never end with / (except root)
 function normalizePath(path) {
   if (!path || path === "/") {
     return "/";
@@ -23,6 +25,7 @@ function normalizePath(path) {
     : normalized;
 }
 
+// Returns the full list of ancestor paths for a given path, including root and the path itself
 function getAncestorPaths(path) {
   const normalized = normalizePath(path);
   if (normalized === "/") {
@@ -41,6 +44,7 @@ function getAncestorPaths(path) {
   return ancestors;
 }
 
+// Returns the last segment of a path as a display name; falls back to the provided fallbackName if available
 function getNodeName(path, fallbackName = "") {
   if (fallbackName) {
     return fallbackName;
@@ -55,6 +59,7 @@ function getNodeName(path, fallbackName = "") {
   return parts[parts.length - 1] || "/";
 }
 
+// Parses a value to an integer; returns fallback for non-finite inputs (unlike parseInt, handles Infinity/NaN)
 function toSafeInteger(value, fallback = null) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
@@ -63,6 +68,7 @@ function toSafeInteger(value, fallback = null) {
   return Math.trunc(parsed);
 }
 
+// Returns a clean displayConfig object with all fields reset to null/empty; used when opening a new viewer screen
 function getDisplayConfigDefaults() {
   return {
     displayDims: null,
@@ -72,6 +78,7 @@ function getDisplayConfigDefaults() {
   };
 }
 
+// Clamps each shape dimension to a non-negative safe integer; used to protect against malformed server responses
 function normalizeShape(shape) {
   if (!Array.isArray(shape)) {
     return [];
@@ -80,10 +87,12 @@ function normalizeShape(shape) {
   return shape.map((size) => Math.max(0, toSafeInteger(size, 0)));
 }
 
+// Returns the default two display axes [0, 1] for a dataset with ndim >= 2; null for 1-D or scalar datasets
 function getDefaultDisplayDims(shape) {
   return shape.length >= 2 ? [0, 1] : null;
 }
 
+// Validates and normalizes displayDims for a given shape; prevents out-of-range axes and ensures the two axes differ
 function normalizeDisplayDimsForShape(displayDims, shape) {
   if (shape.length < 2) {
     return null;
@@ -113,7 +122,9 @@ function normalizeDisplayDimsForShape(displayDims, shape) {
   return dims;
 }
 
+// Normalizes fixedIndices, removing entries for displayDims axes and clamping values to valid dimension bounds
 function normalizeFixedIndicesForShape(fixedIndices, shape, displayDims = []) {
+  // displayDims axes should not have fixed indices — they are the display axes
   const hiddenDims = new Set(Array.isArray(displayDims) ? displayDims : []);
   const normalized = {};
 

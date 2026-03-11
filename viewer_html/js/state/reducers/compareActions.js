@@ -62,8 +62,10 @@ function unpackDeps(deps) {
   };
 }
 
+// Maximum number of overlay series allowed in the line compare view
 const MAX_LINE_COMPARE_SERIES = 4;
 
+// Checks whether a dtype string represents a numeric type compatible with line chart plotting
 function isNumericDtype(dtype) {
   const normalized = String(dtype || "").trim().toLowerCase();
   if (!normalized || normalized.includes("complex")) {
@@ -77,6 +79,7 @@ function isNumericDtype(dtype) {
   );
 }
 
+// Returns true if two shape arrays are element-wise identical; used to enforce series compatibility
 function shapesMatch(a, b) {
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
     return false;

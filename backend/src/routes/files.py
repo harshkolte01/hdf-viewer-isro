@@ -12,6 +12,8 @@ files_bp = Blueprint('files', __name__)
 
 
 def _parse_bool_param(name: str, default: bool) -> bool:
+    # Accept various truthy/falsy string representations so API clients
+    # that send '1'/'0' or 'yes'/'no' all work without extra middleware.
     raw = request.args.get(name)
     if raw is None:
         return default
@@ -25,6 +27,8 @@ def _parse_bool_param(name: str, default: bool) -> bool:
 
 
 def _parse_int_param(name: str, default: int, min_value: int, max_value: int) -> int:
+    # Parse and range-check an integer query parameter; raises ValueError (400)
+    # if the value is present but unparseable or out of the allowed range.
     raw = request.args.get(name)
     if raw is None:
         return default
@@ -56,6 +60,8 @@ def list_files():
         max_items = _parse_int_param('max_items', 20000, 1, 50000)
 
         cache = get_files_cache()
+        # Cache key encodes every parameter that changes the result so different
+        # queries don't collide and each unique combination is cached separately.
         cache_key = f"files_list:{prefix}:{include_folders}:{max_items}"
         
         # Try to get from cache
@@ -64,7 +70,8 @@ def list_files():
             logger.info("Files list requested - CACHE HIT")
             files_count = sum(1 for entry in cached_data if entry.get('type') == 'file')
             folders_count = sum(1 for entry in cached_data if entry.get('type') == 'folder')
-            # Truncation is based on file rows only; folder rows are synthetic.
+            # Truncation flag tells the UI when the result has been capped at max_items.
+            # Folder rows are synthetic (derived from file paths) so only file rows count.
             truncated = files_count >= max_items
             return jsonify({
                 'success': True,
@@ -90,7 +97,7 @@ def list_files():
         entries = storage.list_objects(**list_kwargs)
         files_count = sum(1 for entry in entries if entry.get('type') == 'file')
         folders_count = sum(1 for entry in entries if entry.get('type') == 'folder')
-        # Truncation is based on file rows only; folder rows are synthetic.
+        # Same truncation logic as the cache-hit path above.
         truncated = files_count >= max_items
         
         # Store in cache
@@ -121,6 +128,7 @@ def list_files():
 def refresh_files():
     """Manually refresh the files cache"""
     try:
+        # Clear the entire files cache so the next GET /files/ re-reads from disk.
         cache = get_files_cache()
         cache.clear()
         

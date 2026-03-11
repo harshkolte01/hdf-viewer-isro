@@ -12,7 +12,11 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.runtime");
+
+// Capture the real implementation from viewerPanel/runtime/bindEvents.js which was loaded just before this file
 var delegateBindViewerPanelEvents = global.bindViewerPanelEvents;
+
+// Re-publishes bindViewerPanelEvents as the authoritative global, shadowing the lower-level implementation
 function bindViewerPanelEvents(root, actions) {
   if (typeof delegateBindViewerPanelEvents !== "function") {
     console.error("[HDFViewer] Missing bindViewerPanelEvents for components/viewerPanel/runtime.");

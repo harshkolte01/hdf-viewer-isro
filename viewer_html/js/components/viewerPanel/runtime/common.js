@@ -12,10 +12,14 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.runtime.common");
+
+// Cleanup registries: each runtime adds a cleanup function on init; clearViewerRuntimeBindings calls them all then clears
 const MATRIX_RUNTIME_CLEANUPS = new Set();
 const LINE_RUNTIME_CLEANUPS = new Set();
 const HEATMAP_RUNTIME_CLEANUPS = new Set();
 
+// Calls every registered cleanup closure and clears all three sets
+// Invoked before every full re-render to prevent stale event listeners accumulating on recycled DOM nodes
 function clearViewerRuntimeBindings() {
   MATRIX_RUNTIME_CLEANUPS.forEach((cleanup) => {
     try {
@@ -45,6 +49,7 @@ function clearViewerRuntimeBindings() {
   HEATMAP_RUNTIME_CLEANUPS.clear();
 }
 
+// Ensures a DOM pool stays at exactly `count` elements with className; creates or removes nodes as needed
 function ensureNodePool(container, pool, count, className) {
   while (pool.length < count) {
     const node = document.createElement("div");
@@ -61,6 +66,7 @@ function ensureNodePool(container, pool, count, className) {
   }
 }
 
+// Sets text and tone class on a status element inside the matrix shell
 function setMatrixStatus(statusElement, message, tone = "info") {
   if (!statusElement) {
     return;

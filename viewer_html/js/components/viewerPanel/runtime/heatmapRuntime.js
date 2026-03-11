@@ -12,15 +12,19 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.runtime.heatmapRuntime");
-const HEATMAP_MAX_SIZE = 1024;
-const HEATMAP_MIN_ZOOM = 1;
-const HEATMAP_MAX_ZOOM = 8;
-const HEATMAP_PAN_START_ZOOM = 1.2;
-const HEATMAP_SELECTION_CACHE_LIMIT = 12;
-const HEATMAP_SELECTION_DATA_CACHE = new Map();
-const HEATMAP_SELECTION_VIEW_CACHE = new Map();
-const HEATMAP_FULLSCREEN_RESTORE_TTL_MS = 1200;
+
+// --- Heatmap canvas constants ---
+const HEATMAP_MAX_SIZE = 1024;              // maximum downsampled canvas dimension (px)
+const HEATMAP_MIN_ZOOM = 1;                 // 1x = fit-to-window
+const HEATMAP_MAX_ZOOM = 8;                 // maximum zoom magnification
+const HEATMAP_PAN_START_ZOOM = 1.2;         // panning is only active above this zoom level
+const HEATMAP_SELECTION_CACHE_LIMIT = 12;   // max cached heatmap datasets before oldest is evicted
+const HEATMAP_SELECTION_DATA_CACHE = new Map();  // raw data cache keyed by selection string
+const HEATMAP_SELECTION_VIEW_CACHE = new Map();  // rendered ImageData cache keyed by selection+colormap
+const HEATMAP_FULLSCREEN_RESTORE_TTL_MS = 1200;  // ms a restore target stays live after fullscreen exit
 let heatmapFullscreenRestore = null;
+
+// Per-colormap RGB stop arrays used by the linear interpolation colormap pipeline for pixel rendering
 const HEATMAP_COLOR_STOPS = Object.freeze({
   viridis: [
     [68, 1, 84],

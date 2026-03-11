@@ -12,8 +12,11 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.render");
+
+// Top-level render entry point: sets a panel mode class and delegates to inspect or display content builders
 function renderViewerPanel(state) {
   const isDisplay = state.viewMode === "display";
+  // Line full view has a special panel CSS class that removes min-height constraints
   const isLineFixedPage =
     isDisplay &&
     (state.displayTab || "line") === "line" &&

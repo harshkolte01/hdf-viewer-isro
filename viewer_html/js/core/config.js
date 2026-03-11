@@ -10,13 +10,16 @@
 
   var DEFAULT_API_BASE_URL = "http://localhost:5000";
 
+  // Read runtime config injected by config/runtime-config.js before this script loaded
   var runtimeConfig =
     global.__CONFIG__ && typeof global.__CONFIG__ === "object" ? global.__CONFIG__ : {};
 
+  // Strip trailing slashes from the base URL to make URL concatenation consistent
   function normalizeBaseUrl(value) {
     return String(value || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
   }
 
+  // Encodes each path segment of an HDF5 object key separately, preserving internal `/` separators
   function encodeObjectKeyForPath(key) {
     return String(key || "")
       .split("/")
@@ -26,6 +29,7 @@
       .join("/");
   }
 
+  // Appends a query param, supporting array values (appends once per element)
   function appendSearchParams(searchParams, key, value) {
     if (value === null || value === undefined) {
       return;
@@ -43,6 +47,7 @@
     searchParams.append(key, String(value));
   }
 
+  // Builds a complete request URL from an endpoint path and optional query params object
   function buildApiUrl(endpoint, params) {
     var endpointValue = endpoint || "";
     var normalizedEndpoint =
@@ -58,8 +63,11 @@
     return url.toString();
   }
 
+  // Resolve final API base URL from runtime config or fall back to localhost default
   var API_BASE_URL = normalizeBaseUrl(runtimeConfig.API_BASE_URL);
 
+  // Frozen map of all backend endpoint path definitions.
+  // String values are static paths; functions accept an object key and return the encoded path.
   var API_ENDPOINTS = Object.freeze({
     FILES: "/files",
     FILES_REFRESH: "/files/refresh",
@@ -84,6 +92,7 @@
     API_BASE_URL: API_BASE_URL,
   });
 
+  // Bundle everything into a frozen config object for safe consumption by other modules
   var configApi = Object.freeze({
     DEFAULT_API_BASE_URL: DEFAULT_API_BASE_URL,
     runtimeConfig: runtimeConfig,
@@ -95,6 +104,7 @@
     buildApiUrl: buildApiUrl,
   });
 
+  // Publish under namespace and as shorthand globals for cross-module access
   ns.core.config = configApi;
   ns.core.API_BASE_URL = API_BASE_URL;
   ns.core.API_ENDPOINTS = API_ENDPOINTS;

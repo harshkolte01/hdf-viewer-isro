@@ -11,14 +11,16 @@ from src.storage.filesystem_client import get_storage_client
 
 logger = logging.getLogger(__name__)
 
-MAX_PREVIEW_ELEMENTS = 250_000
-MAX_HEATMAP_SIZE = 512
-MAX_HEATMAP_ELEMENTS = 200_000
-MAX_LINE_POINTS = 5000
-MIN_LINE_POINTS = 2000
-TABLE_1D_MAX = 1000
-TABLE_2D_MAX = 200
-MAX_STATS_SAMPLE = 100_000
+# Hard limits that control how much data is read and returned per request.
+# These prevent excessive memory use and slow JSON serialization on large datasets.
+MAX_PREVIEW_ELEMENTS = 250_000   # max elements in a single preview response
+MAX_HEATMAP_SIZE = 512           # max pixel dimension for heatmap downsampling
+MAX_HEATMAP_ELEMENTS = 200_000   # max total cells in a heatmap response
+MAX_LINE_POINTS = 5000           # max points returned for a line/profile slice
+MIN_LINE_POINTS = 2000           # lower bound for downsampled line quality
+TABLE_1D_MAX = 1000              # max rows shown in a 1-D table preview
+TABLE_2D_MAX = 200               # max rows/cols shown in a 2-D table preview
+MAX_STATS_SAMPLE = 100_000       # max elements used for summary statistics
 
 
 class HDF5Reader:
@@ -68,10 +70,14 @@ class HDF5Reader:
         display_dims = self._parse_display_dims(display_dims_param, ndim)
         fixed_indices = self._parse_fixed_indices(fixed_indices_param, ndim)
 
+        # Drop any fixed_indices entries that conflict with the two display dims
+        # — the display dims are the axes that vary freely, so they must not be fixed.
         for dim in list(fixed_indices.keys()):
             if dim in display_dims:
                 del fixed_indices[dim]
 
+        # Every non-display dim needs a fixed slice index for the HDF5 indexer.
+        # Default to the midpoint so previews show the middle of higher dims.
         for dim in range(ndim):
             if dim in display_dims:
                 continue
@@ -124,6 +130,8 @@ class HDF5Reader:
                     if detail_level not in ('fast', 'full'):
                         detail_level = 'full'
 
+                    # Fast detail skips building payloads that the client won't render,
+                    # e.g. when mode='line' we skip the table and heatmap arrays.
                     selective_fast_mode = detail_level == 'fast' and requested_mode in (
                         'line',
                         'table',
@@ -138,6 +146,8 @@ class HDF5Reader:
                             'reason': 'disabled'
                         }
 
+                    # 1-D datasets get a table view and a line-plot; skip unused payloads
+                    # when the client requests a specific mode in fast detail level.
                     if ndim == 1:
                         include_table = True
                         include_plot = True
@@ -156,6 +166,9 @@ class HDF5Reader:
                         profile = None
                         display_dims_out = None
                         fixed_indices_out = {}
+                    # N-D datasets: normalise the axis selection before slicing.
+                    # If the caller did not supply display_dims/fixed_indices directly,
+                    # derive them from the raw query-string params.
                     else:
                         if display_dims is None or fixed_indices is None:
                             display_dims, fixed_indices = self.normalize_preview_axes(
@@ -255,6 +268,7 @@ class HDF5Reader:
                     row_limit = max(0, min(row_limit, rows - row_offset))
                     col_limit = max(0, min(col_limit, cols - col_offset))
 
+                    # Compute output dimensions after downsampling step is applied.
                     out_rows = int(math.ceil(row_limit / row_step)) if row_limit > 0 else 0
                     out_cols = int(math.ceil(col_limit / col_step)) if col_limit > 0 else 0
 
@@ -273,7 +287,9 @@ class HDF5Reader:
                             }
                         )
                         data = obj[tuple(indexer)]
-                        # Keep output orientation aligned with selected display dims order.
+                        # When the user picks row_dim > col_dim (e.g. dims (2,1)), h5py
+                        # returns an array in storage order — transpose so rows/cols match
+                        # the caller’s intended display orientation.
                         if needs_transpose and hasattr(data, 'T'):
                             data = data.T
                         data = self._sanitize(data)
@@ -321,18 +337,24 @@ class HDF5Reader:
                     shape = list(obj.shape)
                     ndim = obj.ndim
 
+                    # Resolve which dimension varies (the line axis) and which index
+                    # to fix when extracting a row or column profile from a 2-D slice.
                     axis = None
                     index = None
                     if ndim == 1:
+                        # 1-D dataset: the only dimension is the natural line axis.
                         vary_dim = 0
                         axis = 'dim'
                     elif isinstance(line_dim, int):
+                        # Caller specified an actual dimension number — use it directly.
                         vary_dim = line_dim
                         axis = 'dim'
                     else:
                         if display_dims is None:
                             raise ValueError("display_dims required for row/col line")
                         row_dim, col_dim = display_dims
+                        # 'row' mode: fix a row index, vary along the column dimension.
+                        # 'col' mode: fix a column index, vary along the row dimension.
                         # `row` means "take one row, vary along columns".
                         if line_dim == 'col':
                             vary_dim = row_dim
@@ -417,6 +439,8 @@ class HDF5Reader:
                     target_rows = min(rows, max_size)
                     target_cols = min(cols, max_size)
 
+                    # Derive integer downsampling strides so the output fits within max_size.
+                    # ceil ensures the stride is never less than 1 even at boundary sizes.
                     step_r = max(1, int(math.ceil(rows / target_rows))) if target_rows > 0 else 1
                     step_c = max(1, int(math.ceil(cols / target_cols))) if target_cols > 0 else 1
 
@@ -533,10 +557,12 @@ class HDF5Reader:
                                 # Add attributes (limit to 10 for performance)
                                 if hasattr(child, 'attrs') and len(child.attrs) > 0:
                                     attrs = {}
+                                    # Read up to 10 attributes per dataset to avoid slow serialisation
+                                    # on files with very large attribute dictionaries.
                                     for attr_name in list(child.attrs.keys())[:10]:
                                         try:
                                             attr_value = child.attrs[attr_name]
-                                            # Convert to JSON-serializable type
+                                            # Convert numpy/bytes values to JSON-serializable Python types.
                                             if isinstance(attr_value, bytes):
                                                 attr_value = attr_value.decode('utf-8', errors='ignore')
                                             elif hasattr(attr_value, 'tolist'):
@@ -727,6 +753,9 @@ class HDF5Reader:
         return total
 
     def _compute_strides(self, shape: List[int], target: int) -> List[int]:
+        # Compute a uniform per-dimension stride so that the strided sample
+        # has at most `target` elements. Uses the n-th root of the ratio to
+        # spread the reduction evenly across all axes.
         total = self._total_elements(shape)
         if total == 0:
             return [1 for _ in shape]
@@ -750,6 +779,7 @@ class HDF5Reader:
                 'reason': 'empty'
             }
 
+        # Strided read keeps the stats sample small regardless of dataset size.
         strides = self._compute_strides(shape, MAX_STATS_SAMPLE)
         indexer = tuple(slice(None, None, stride) for stride in strides)
         sample = dataset[indexer]

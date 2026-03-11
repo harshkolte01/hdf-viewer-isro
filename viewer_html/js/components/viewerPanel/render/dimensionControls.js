@@ -12,7 +12,11 @@
     return;
   }
   var moduleState = ensurePath(ns, "components.viewerPanel.render.dimensionControls");
+
+// Feature flag: set to true to show per-dimension index sliders in the UI (currently disabled pending UX review)
 const SHOW_FIXED_INDEX_CONTROLS = false;
+
+// Entry point: for ndim < 2 there are no selectable axes, so nothing is rendered
 function renderDimensionControls(state, preview) {
   const ndim = Number(preview?.ndim || 0);
   if (ndim < 2) {
