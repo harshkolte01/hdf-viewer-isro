@@ -210,8 +210,8 @@
     var hasFile = Boolean(deepLinkKey);
 
     if (hasFile && typeof actionsApi.openViewer === "function") {
-      // Remove ?file= from the browser URL bar to keep it clean after boot
-      history.replaceState({}, "", location.pathname);
+      // // Remove ?file= from the browser URL bar to keep it clean after boot
+      // history.replaceState({}, "", location.pathname);
       actionsApi.openViewer({
         key: deepLinkKey,
         etag: null,
